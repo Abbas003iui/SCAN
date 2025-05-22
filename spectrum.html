@@ -28,7 +28,7 @@
       box-shadow: 0 0 6px #ccc;
     }
     input[type="file"] {
-      margin: 10px 0 20px;
+      margin: 10px 0 5px;
     }
     canvas {
       max-width: 100%;
@@ -42,6 +42,22 @@
       margin-top: 15px;
       font-weight: bold;
       color: #006400;
+    }
+    .preview-container {
+      margin-bottom: 15px;
+    }
+    img.preview {
+      max-width: 300px;
+      max-height: 180px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      margin-top: 5px;
+      object-fit: contain;
+      background: white;
+      box-shadow: 0 0 5px #bbb;
+    }
+    label {
+      font-weight: bold;
     }
   </style>
 </head>
@@ -59,11 +75,17 @@
     6. Peak wavelength and absorbance are shown in the graph title.<br/>
   </p>
 
-  <label><strong>Upload Blank (Reference) Image:</strong></label><br/>
-  <input type="file" accept="image/*" id="uploadBlank" /><br/>
+  <div class="preview-container">
+    <label for="uploadBlank">Upload Blank (Reference) Image:</label><br/>
+    <input type="file" accept="image/*" id="uploadBlank" /><br/>
+    <img id="blankPreview" class="preview" alt="Blank Image Preview" />
+  </div>
 
-  <label><strong>Upload Sample Image:</strong></label><br/>
-  <input type="file" accept="image/*" id="uploadSample" /><br/>
+  <div class="preview-container">
+    <label for="uploadSample">Upload Sample Image:</label><br/>
+    <input type="file" accept="image/*" id="uploadSample" /><br/>
+    <img id="samplePreview" class="preview" alt="Sample Image Preview" />
+  </div>
 
   <canvas id="spectrumChart"></canvas>
   <div id="status"></div>
@@ -95,7 +117,6 @@
     } else {
       r = 1;
     }
-    // Saturate colors by increasing intensity a bit:
     const saturate = v => Math.min(255, Math.round(v * 1.4));
     return `rgba(${saturate(r*255)},${saturate(g*255)},${saturate(b*255)},0.7)`;
   }
@@ -111,7 +132,6 @@
       let sum = 0;
       for (let y = 0; y < img.height; y++) {
         const pixel = ctx2.getImageData(x, y, 1, 1).data;
-        // Use average of RGB as intensity (brightness)
         sum += (pixel[0] + pixel[1] + pixel[2]) / 3;
       }
       spectrum.push(sum / img.height);
@@ -172,7 +192,6 @@
             if (!chartArea) {
               return null;
             }
-            // Create gradient fill matching wavelength colors
             const gradient = chartCtx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
             labels.forEach((w, i) => {
               const stop = i / (labels.length - 1);
@@ -231,39 +250,27 @@
     });
   }
 
-  document.getElementById('uploadBlank').addEventListener('change', (e) => {
-    const file = e.target.files[0];
+  function handleFileInput(event, isBlank) {
+    const file = event.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-      const img = new Image();
-      img.onload = function() {
-        blankSpectrum = analyzeImage(img);
-        document.getElementById('status').textContent = 'Blank/reference image loaded. Now upload sample image.';
-        if (sampleSpectrum) {
-          computeAbsorbance(sampleSpectrum);
-        }
-      };
-      img.src = evt.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
 
-  document.getElementById('uploadSample').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-      const img = new Image();
-      img.onload = function() {
+    const img = new Image();
+    img.onload = () => {
+      if (isBlank) {
+        blankSpectrum = analyzeImage(img);
+        document.getElementById('blankPreview').src = img.src;
+        document.getElementById('status').textContent = "Blank image loaded. Please upload sample image.";
+      } else {
         sampleSpectrum = analyzeImage(img);
-        document.getElementById('status').textContent = 'Sample image loaded. Calculating absorbance...';
+        document.getElementById('samplePreview').src = img.src;
         computeAbsorbance(sampleSpectrum);
-      };
-      img.src = evt.target.result;
+      }
     };
-    reader.readAsDataURL(file);
-  });
+    img.src = URL.createObjectURL(file);
+  }
+
+  document.getElementById('uploadBlank').addEventListener('change', e => handleFileInput(e, true));
+  document.getElementById('uploadSample').addEventListener('change', e => handleFileInput(e, false));
 </script>
 
 </body>
