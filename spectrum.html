@@ -37,12 +37,21 @@
       margin-bottom: 20px;
       flex-wrap: wrap;
     }
+    #images div {
+      background: white;
+      border: 2px solid #aaa;
+      border-radius: 8px;
+      padding: 10px;
+      max-width: 320px;
+      box-shadow: 2px 2px 6px #ccc;
+    }
     #images img {
       max-width: 300px;
       max-height: 200px;
-      border: 1px solid #ccc;
       border-radius: 6px;
       object-fit: contain;
+      display: block;
+      margin: 0 auto;
     }
     #chartContainer {
       position: relative;
@@ -58,13 +67,13 @@
   <div id="instructions">
     <strong>Instructions:</strong>
     <ol>
-      <li>First, upload a <strong>blank/reference</strong> image (e.g., empty cuvette or white background) by selecting a file in the "Upload Blank" input.</li>
-      <li>Next, upload the <strong>sample</strong> image (containing the spectrum to analyze) using the "Upload Sample" input.</li>
-      <li>The analyzer calculates absorbance as A = log10(I<sub>blank</sub> / I<sub>sample</sub>), normalizes it, and plots the spectrum.</li>
-      <li>The graph's colored area under the curve matches the visible light spectrum for corresponding wavelengths (380-750 nm).</li>
-      <li>The peak wavelength and absorbance value are shown above the graph.</li>
+      <li>Upload a <strong>blank/reference</strong> image (e.g., empty cuvette or white background) in "Upload Blank".</li>
+      <li>Upload the <strong>sample</strong> image in "Upload Sample".</li>
+      <li>The absorbance is calculated as A = log<sub>10</sub>(I<sub>blank</sub> / I<sub>sample</sub>), clipped to 0, normalized ≤1.</li>
+      <li>The graph plots absorbance with a black trendline and a colored fill gradient matching the visible spectrum wavelengths (380–750 nm).</li>
+      <li>Peak wavelength and absorbance are displayed above the graph.</li>
     </ol>
-    <p><em>Note:</em> Upload images with similar dimensions for best results.</p>
+    <p><em>Note:</em> For best results, use images with the same dimensions.</p>
   </div>
 
   <div id="uploadSection">
@@ -97,49 +106,46 @@
   <script>
     const ctx = document.getElementById('spectrumChart').getContext('2d');
     let chart = null;
-
     let blankSpectrum = null;
     let sampleSpectrum = null;
 
-    function getColor(wavelength) {
-      // Convert wavelength (nm) to saturated RGB with alpha 0.4 for area fill
-      if (wavelength >= 380 && wavelength <= 750) {
-        let r = 0, g = 0, b = 0;
-        if (wavelength < 440) {
-          r = -(wavelength - 440) / (440 - 380);
-          b = 1;
-        } else if (wavelength < 490) {
-          g = (wavelength - 440) / (490 - 440);
-          b = 1;
-        } else if (wavelength < 510) {
-          g = 1;
-          b = -(wavelength - 510) / (510 - 490);
-        } else if (wavelength < 580) {
-          r = (wavelength - 510) / (580 - 510);
-          g = 1;
-        } else if (wavelength < 645) {
-          r = 1;
-          g = -(wavelength - 645) / (645 - 580);
-        } else {
-          r = 1;
-        }
-        // Enhance saturation by scaling RGB to max 255
-        r = Math.min(1, Math.max(0, r));
-        g = Math.min(1, Math.max(0, g));
-        b = Math.min(1, Math.max(0, b));
-
-        // Increase saturation by raising to power <1
-        r = Math.pow(r, 0.7);
-        g = Math.pow(g, 0.7);
-        b = Math.pow(b, 0.7);
-
-        return `rgba(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)},0.4)`;
+    // Converts wavelength (nm) to saturated rgb color for gradient
+    function wavelengthToRgb(wavelength) {
+      let R = 0, G = 0, B = 0;
+      if (wavelength >= 380 && wavelength < 440) {
+        R = -(wavelength - 440) / (440 - 380);
+        G = 0;
+        B = 1;
+      } else if (wavelength >= 440 && wavelength < 490) {
+        R = 0;
+        G = (wavelength - 440) / (490 - 440);
+        B = 1;
+      } else if (wavelength >= 490 && wavelength < 510) {
+        R = 0;
+        G = 1;
+        B = -(wavelength - 510) / (510 - 490);
+      } else if (wavelength >= 510 && wavelength < 580) {
+        R = (wavelength - 510) / (580 - 510);
+        G = 1;
+        B = 0;
+      } else if (wavelength >= 580 && wavelength < 645) {
+        R = 1;
+        G = -(wavelength - 645) / (645 - 580);
+        B = 0;
+      } else if (wavelength >= 645 && wavelength <= 750) {
+        R = 1;
+        G = 0;
+        B = 0;
       }
-      return 'rgba(0,0,0,0)';
+      // Saturate and convert to 0-255
+      R = Math.round(Math.min(Math.max(R, 0), 1) * 255);
+      G = Math.round(Math.min(Math.max(G, 0), 1) * 255);
+      B = Math.round(Math.min(Math.max(B, 0), 1) * 255);
+      return `rgb(${R},${G},${B})`;
     }
 
+    // Extract average vertical intensity for each x pixel
     function extractIntensity(img) {
-      // Extract average intensity per vertical slice (x)
       const canvas = document.createElement('canvas');
       const cctx = canvas.getContext('2d');
       canvas.width = img.width;
@@ -151,8 +157,7 @@
         let sum = 0;
         for (let y = 0; y < canvas.height; y++) {
           const p = cctx.getImageData(x, y, 1, 1).data;
-          // Use luminance formula to better estimate intensity:
-          // Y = 0.2126 R + 0.7152 G + 0.0722 B
+          // Use luminance formula for intensity
           const lum = 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
           sum += lum;
         }
@@ -161,7 +166,7 @@
       return spectrum;
     }
 
-    // Compute absorbance A = log10(blank / sample), clamp negatives to 0
+    // Calculate absorbance = log10(blank/sample), clamp at 0, normalize if >1
     function computeAbsorbance(sample, blank) {
       const length = Math.min(sample.length, blank.length);
       const absorbanceRaw = [];
@@ -179,6 +184,7 @@
       return absorbanceRaw;
     }
 
+    // Create wavelength labels between 380 and 750 nm for data points
     function prepareLabels(length) {
       const labels = [];
       const startWavelength = 380;
@@ -190,122 +196,128 @@
       return labels;
     }
 
+    // Generate gradient for fill dynamically after layout (chartArea)
+    function createGradient(ctx, chartArea, labels) {
+      const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+      const n = labels.length;
+      for (let i = 0; i < n; i++) {
+        const pos = i / (n - 1);
+        gradient.addColorStop(pos, wavelengthToRgb(labels[i]));
+      }
+      return gradient;
+    }
+
     function updateChart() {
       if (!blankSpectrum || !sampleSpectrum) return;
 
       const absorbance = computeAbsorbance(sampleSpectrum, blankSpectrum);
       const labels = prepareLabels(absorbance.length);
 
-      // Find peak wavelength & value
       const peakIndex = absorbance.indexOf(Math.max(...absorbance));
       const peakWavelength = labels[peakIndex];
       const peakValue = absorbance[peakIndex].toFixed(3);
 
-      const backgroundColors = labels.map(w => getColor(w));
+      if (chart) chart.destroy();
 
-      const data = {
-        labels: labels,
-        datasets: [
-          {
+      // We create the chart with a placeholder fill color, 
+      // then use plugin 'beforeDatasetsDraw' to apply the gradient fill correctly once chart area is known
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
             label: 'Absorbance',
             data: absorbance,
             borderColor: 'black',
-            backgroundColor: backgroundColors,
+            backgroundColor: 'rgba(0,0,0,0)', // placeholder, will be overwritten by gradient
             fill: true,
             tension: 0.3,
             pointRadius: 0
-          }
-        ]
-      };
-
-      const options = {
-        responsive: true,
-        maintainAspectRatio: false,
-        layout: {
-          padding: {
-            bottom: 40,
-            left: 50,
-            right: 20,
-            top: 20
-          }
+          }]
         },
-        scales: {
-          x: {
-            title: { display: true, text: 'Wavelength (nm)', font: { size: 14 } },
-            ticks: {
-              maxRotation: 0,
-              minRotation: 0,
-              font: { size: 12 },
-              maxTicksLimit: 12
-            },
-            min: 380,
-            max: 750,
-            grid: { display: true }
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: {
+            padding: { bottom: 40, left: 50, right: 20, top: 20 }
           },
-          y: {
-            title: { display: true, text: 'Absorbance', font: { size: 14 } },
-            min: 0,
-            suggestedMax: 1,
-            max: 1.1,
-            ticks: {
-              stepSize: 0.1,
-              font: { size: 12 }
+          scales: {
+            x: {
+              title: { display: true, text: 'Wavelength (nm)', font: { size: 14 } },
+              ticks: {
+                maxRotation: 0,
+                minRotation: 0,
+                font: { size: 12 },
+                maxTicksLimit: 12
+              },
+              min: 380,
+              max: 750,
+              grid: { display: true }
             },
-            grid: { display: true }
-          }
-        },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: ctx => `Absorbance: ${parseFloat(ctx.formattedValue).toFixed(3)}`
+            y: {
+              title: { display: true, text: 'Absorbance', font: { size: 14 } },
+              min: 0,
+              max: 1,
+              ticks: { font: { size: 12 } },
+              grid: { display: true }
             }
           },
-          title: {
-            display: true,
-            font: { size: 16, weight: 'bold' },
-            text: `Peak Wavelength: ${peakWavelength} nm | Absorbance: ${peakValue}`
+          plugins: {
+            legend: { display: false },
+            title: {
+              display: true,
+              text: `Peak Absorbance: ${peakValue} at ${peakWavelength} nm`,
+              font: { size: 16, weight: 'bold' }
+            }
+          },
+          animation: false,
+          interaction: {
+            intersect: false,
+            mode: 'nearest',
           }
-        }
-      };
+        },
+        plugins: [{
+          id: 'gradientFillPlugin',
+          beforeDatasetsDraw(chart) {
+            const ctx = chart.ctx;
+            const chartArea = chart.chartArea;
+            if (!chartArea) return;
 
-      if (chart) chart.destroy();
-      chart = new Chart(ctx, { type: 'line', data, options });
+            const gradient = createGradient(ctx, chartArea, chart.data.labels);
+            chart.data.datasets[0].backgroundColor = gradient;
+          }
+        }]
+      });
     }
 
-    // Handle blank upload
+    // Load image and extract spectrum
+    function loadImageAndExtract(file, imgElement, isBlank) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        imgElement.src = e.target.result;
+        imgElement.onload = () => {
+          const spectrum = extractIntensity(imgElement);
+          if (isBlank) {
+            blankSpectrum = spectrum;
+          } else {
+            sampleSpectrum = spectrum;
+          }
+          updateChart();
+        };
+      };
+      if (file) reader.readAsDataURL(file);
+    }
+
     document.getElementById('uploadBlank').addEventListener('change', e => {
       const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = evt => {
-        const img = new Image();
-        img.onload = () => {
-          document.getElementById('blankImage').src = img.src;
-          blankSpectrum = extractIntensity(img);
-          if (sampleSpectrum) updateChart();
-        };
-        img.src = evt.target.result;
-      };
-      reader.readAsDataURL(file);
+      if (file) loadImageAndExtract(file, document.getElementById('blankImage'), true);
     });
 
-    // Handle sample upload
     document.getElementById('uploadSample').addEventListener('change', e => {
       const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = evt => {
-        const img = new Image();
-        img.onload = () => {
-          document.getElementById('sampleImage').src = img.src;
-          sampleSpectrum = extractIntensity(img);
-          if (blankSpectrum) updateChart();
-        };
-        img.src = evt.target.result;
-      };
-      reader.readAsDataURL(file);
+      if (file) loadImageAndExtract(file, document.getElementById('sampleImage'), false);
     });
+
   </script>
 </body>
 </html>
