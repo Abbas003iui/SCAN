@@ -2,71 +2,75 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Light Spectrum Analyzer with Calibration</title>
+  <title>UV-Vis Absorbance Spectrum Analyzer</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      background: #f0f0f0;
+      background: #f5f5f5;
+      margin: 20px;
     }
+
     canvas {
-      width: 100% !important;
+      max-width: 900px;
       height: auto !important;
     }
-    .upload {
-      margin: 10px;
-    }
-    .preview-container {
-      display: flex;
-      justify-content: center;
-      gap: 20px;
-      margin: 20px 0;
-    }
-    .preview-container img {
-      max-height: 150px;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-    }
-    #instructions {
-      background: #ffffff;
-      padding: 15px;
-      border-radius: 10px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-      margin: 20px auto;
-      max-width: 800px;
-      text-align: left;
-    }
-    h2 {
-      color: #333;
-    }
-    label {
-      display: inline-block;
-      margin-bottom: 5px;
-    }
+
     #chartContainer {
       width: 100%;
       max-width: 900px;
-      margin: auto;
+      margin: 20px auto;
       aspect-ratio: 2 / 1;
+      background: white;
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    .upload {
+      margin: 10px;
+    }
+
+    .preview-container {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      margin: 20px 0;
+    }
+
+    .preview-container img {
+      max-height: 150px;
+      border-radius: 8px;
+      border: 1px solid #aaa;
+    }
+
+    #instructions {
+      max-width: 800px;
+      margin: auto;
+      text-align: left;
+      padding: 20px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
     }
   </style>
 </head>
 <body>
-  <h1>Light Spectrum Analyzer 🌈</h1>
+
+  <h1>🌈 UV-Vis Absorbance Spectrum Analyzer</h1>
 
   <div id="instructions">
-    <h2>🧪 How to Use:</h2>
+    <h2>📘 Instructions:</h2>
     <ol>
-      <li><strong>Step 1:</strong> Upload a <strong>blank (calibration)</strong> image. This should contain the light spectrum without a sample.</li>
-      <li><strong>Step 2:</strong> Upload the <strong>sample spectrum</strong> image. Absorbance will be calculated as log₁₀(I₀/I).</li>
-      <li>Ensure both images are aligned and of the same resolution.</li>
-      <li>Supported range: <strong>UV to Visible (380–750 nm)</strong>.</li>
+      <li>Upload a <strong>blank image</strong> (spectrum without sample).</li>
+      <li>Upload the <strong>sample image</strong> (spectrum with sample).</li>
+      <li>The graph will display the <strong>absorbance spectrum</strong> with a color fill based on wavelength (380–750 nm).</li>
     </ol>
   </div>
 
   <input type="file" accept="image/*" id="blankUpload" class="upload" />
-  <label for="blankUpload"><strong>Upload Calibration (Blank)</strong></label><br>
+  <label for="blankUpload"><strong>Upload Blank Image</strong></label><br>
 
   <input type="file" accept="image/*" id="sampleUpload" class="upload" />
   <label for="sampleUpload"><strong>Upload Sample Image</strong></label>
@@ -74,11 +78,11 @@
   <div class="preview-container">
     <div>
       <p><strong>Blank Image</strong></p>
-      <img id="blankPreview" src="#" alt="Blank Preview" style="display:none;" />
+      <img id="blankPreview" style="display:none;" />
     </div>
     <div>
       <p><strong>Sample Image</strong></p>
-      <img id="samplePreview" src="#" alt="Sample Preview" style="display:none;" />
+      <img id="samplePreview" style="display:none;" />
     </div>
   </div>
 
@@ -87,11 +91,10 @@
   </div>
 
   <script>
-    let blankSpectrum = null;
-    let chart = null;
-
     const startWavelength = 380;
     const endWavelength = 750;
+    let blankSpectrum = null;
+    let chart = null;
 
     function extractSpectrum(img) {
       const canvas = document.createElement('canvas');
@@ -99,6 +102,7 @@
       canvas.width = img.width;
       canvas.height = img.height;
       ctx.drawImage(img, 0, 0);
+
       const spectrum = [];
 
       for (let x = 0; x < img.width; x++) {
@@ -146,7 +150,6 @@
       }));
 
       const ctx = document.getElementById('spectrumChart').getContext('2d');
-
       if (chart) chart.destroy();
 
       chart = new Chart(ctx, {
@@ -158,7 +161,18 @@
             fill: true,
             borderColor: 'black',
             pointRadius: 0,
-            tension: 0.3
+            tension: 0.3,
+            backgroundColor: function(ctx) {
+              const chartArea = ctx.chart.chartArea;
+              if (!chartArea) return null;
+
+              const gradient = ctx.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+              for (let i = 0; i <= 1; i += 0.1) {
+                const w = startWavelength + i * (endWavelength - startWavelength);
+                gradient.addColorStop(i, wavelengthToColor(w));
+              }
+              return gradient;
+            }
           }]
         },
         options: {
@@ -189,19 +203,7 @@
             },
             legend: { display: false }
           }
-        },
-        plugins: [{
-          id: 'colorFillByWavelength',
-          beforeDraw: (chartInstance) => {
-            const { ctx, chartArea } = chartInstance;
-            const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-            for (let i = 0; i <= 1; i += 0.1) {
-              const w = startWavelength + i * (endWavelength - startWavelength);
-              gradient.addColorStop(i, wavelengthToColor(w));
-            }
-            chartInstance.data.datasets[0].backgroundColor = gradient;
-          }
-        }]
+        }
       });
     }
 
@@ -218,7 +220,7 @@
             blankSpectrum = spectrum;
             document.getElementById('blankPreview').src = img.src;
             document.getElementById('blankPreview').style.display = 'inline';
-            alert("✅ Calibration image loaded. Now upload your sample.");
+            alert("✅ Blank (calibration) image loaded.");
           } else {
             document.getElementById('samplePreview').src = img.src;
             document.getElementById('samplePreview').style.display = 'inline';
@@ -233,5 +235,6 @@
     document.getElementById('blankUpload').addEventListener('change', e => handleImageUpload(e, true));
     document.getElementById('sampleUpload').addEventListener('change', e => handleImageUpload(e, false));
   </script>
+
 </body>
 </html>
