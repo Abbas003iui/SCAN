@@ -17,14 +17,41 @@
     .upload {
       margin: 10px;
     }
+    #instructions {
+      background: #ffffff;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      margin: 20px auto;
+      max-width: 600px;
+      text-align: left;
+    }
+    h2 {
+      color: #333;
+    }
+    label {
+      display: inline-block;
+      margin-bottom: 5px;
+    }
   </style>
 </head>
 <body>
   <h1>Light Spectrum Analyzer</h1>
+
+  <div id="instructions">
+    <h2>🧪 How to Calibrate & Analyze:</h2>
+    <ol>
+      <li><strong>Step 1:</strong> Upload a <strong>blank (calibration)</strong> image using the first upload button. This image should contain a light spectrum with no sample.</li>
+      <li><strong>Step 2:</strong> Upload your <strong>sample</strong> spectrum image using the second button. This will apply the calibration and show the absorbance graph.</li>
+      <li>Make sure both images are of the same resolution and alignment.</li>
+    </ol>
+  </div>
+
   <input type="file" accept="image/*" id="blankUpload" class="upload" />
-  <label for="blankUpload">Upload Calibration (Blank)</label><br>
+  <label for="blankUpload"><strong>Upload Calibration (Blank)</strong></label><br>
   <input type="file" accept="image/*" id="sampleUpload" class="upload" />
-  <label for="sampleUpload">Upload Sample Image</label><br>
+  <label for="sampleUpload"><strong>Upload Sample Image</strong></label><br>
+
   <canvas id="spectrumChart" width="800" height="400"></canvas>
 
   <script>
@@ -144,7 +171,7 @@
           const spectrum = extractSpectrum(img);
           if (isBlank) {
             blankSpectrum = spectrum;
-            alert("Blank (calibration) image uploaded successfully.");
+            alert("✅ Calibration image loaded. Now upload your sample image.");
           } else {
             plotSpectrum(spectrum, img.width);
           }
