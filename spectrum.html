@@ -17,6 +17,9 @@
       border: 1px solid #ccc;
       background-color: white;
     }
+    #chartCanvas {
+      height: 300px !important; /* limit vertical stretching */
+    }
     input[type="file"] {
       margin-top: 15px;
     }
@@ -27,7 +30,7 @@
   <p>Upload an image of a light source to analyze its spectrum:</p>
   <input type="file" accept="image/*" onchange="loadImage(event)" capture="environment">
   <canvas id="imageCanvas" width="600" height="150"></canvas>
-  <canvas id="chartCanvas" width="600" height="350"></canvas>
+  <canvas id="chartCanvas"></canvas>
   <p id="peakInfo"></p>
 
   <script>
@@ -76,7 +79,7 @@
       let counts = {};
 
       spectrum.forEach(p => {
-        const A = -Math.log10((p.intensity + 1) / (maxIntensity + 1)); // avoid log(0)
+        const A = -Math.log10((p.intensity + 1) / (maxIntensity + 1));
         if (!absorbance[p.wavelength]) {
           absorbance[p.wavelength] = 0;
           counts[p.wavelength] = 0;
@@ -88,32 +91,30 @@
       let rawLabels = Object.keys(absorbance).map(Number);
       let rawValues = rawLabels.map(w => absorbance[w] / counts[w]);
 
-      // Fill gaps in wavelength range (190–800 nm)
+      // Fill range 190–800 nm
       const fullRange = Array.from({ length: 611 }, (_, i) => i + 190);
       const absorbanceMap = Object.fromEntries(rawLabels.map((w, i) => [w, rawValues[i]]));
       const labels = fullRange;
       const values = fullRange.map(w => absorbanceMap[w] || 0);
 
-      // Find highest absorbance peak
+      // Find peak
       const peakIndex = values.indexOf(Math.max(...values));
       const peakWavelength = labels[peakIndex];
       const peakAbsorbance = values[peakIndex].toFixed(2);
-
       document.getElementById("peakInfo").innerText =
         `Highest Absorbance: ${peakAbsorbance} at ${peakWavelength} nm`;
 
       if (chart) chart.destroy();
 
-      // Color gradient under curve (UV–VIS)
+      // Gradient fill
       const gradient = chartCtx.createLinearGradient(0, 0, chartCtx.canvas.width, 0);
-      gradient.addColorStop(0.00, "purple");    // 190–380 UV
-      gradient.addColorStop(0.15, "violet");    // 380–450
-      gradient.addColorStop(0.30, "blue");      // 450–495
-      gradient.addColorStop(0.45, "green");     // 495–570
-      gradient.addColorStop(0.55, "yellow");    // 570–590
-      gradient.addColorStop(0.63, "orange");    // 590–620
-      gradient.addColorStop(0.75, "red");       // 620–750
-      gradient.addColorStop(1.00, "gray");      // 750–800+
+      gradient.addColorStop(0.00, "#8b00ff");  // UV → violet
+      gradient.addColorStop(0.15, "#0000ff");  // blue
+      gradient.addColorStop(0.30, "#00ff00");  // green
+      gradient.addColorStop(0.45, "#ffff00");  // yellow
+      gradient.addColorStop(0.60, "#ffa500");  // orange
+      gradient.addColorStop(0.75, "#ff0000");  // red
+      gradient.addColorStop(1.00, "#aaaaaa");  // IR/gray
 
       chart = new Chart(chartCtx, {
         type: 'line',
@@ -123,16 +124,15 @@
             label: "Absorbance Spectrum",
             data: values,
             borderColor: "#000",
-            borderWidth: 2,
-            fill: true,
             backgroundColor: gradient,
+            fill: true,
             tension: 0.4,
             pointRadius: 0
           }]
         },
         options: {
           responsive: true,
-          maintainAspectRatio: false,
+          maintainAspectRatio: true,
           plugins: {
             legend: { display: true },
             tooltip: { mode: 'index', intersect: false }
@@ -143,14 +143,13 @@
               min: 190,
               max: 800,
               ticks: {
-                callback: function(value) {
-                  return value + ' nm';
-                }
+                callback: value => value + ' nm'
               }
             },
             y: {
               title: { display: true, text: "Absorbance" },
-              beginAtZero: true
+              beginAtZero: true,
+              max: 2  // Adjust this if needed
             }
           }
         }
