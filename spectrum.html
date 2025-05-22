@@ -37,7 +37,6 @@
   const ctx = canvas.getContext('2d');
   let chartInstance = null;
 
-  // Adjusted getColor function with alpha parameter for saturation control
   function getColor(wavelength, alpha=0.85) {
     if (wavelength < 380 || wavelength > 750) return `rgba(0,0,0,0)`;
     let r=0,g=0,b=0;
@@ -62,7 +61,6 @@
     return `rgba(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)},${alpha})`;
   }
 
-  // Creates a horizontal gradient across the canvas width to fill area with spectral colors
   function createSpectrumGradient(ctx, width) {
     const gradient = ctx.createLinearGradient(0, 0, width, 0);
     const step = 10;
@@ -73,8 +71,8 @@
     return gradient;
   }
 
-  // Analyzes image brightness spectrum horizontally, normalizes, and draws chart
   function analyzeImage(img) {
+    console.log('Analyzing image...');
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
     tempCanvas.width = img.width;
@@ -96,6 +94,10 @@
     }
 
     const maxVal = Math.max(...spectrum);
+    if (maxVal === 0) {
+      alert("Image data seems empty or fully black. Please upload a valid spectral image.");
+      return;
+    }
     const normSpectrum = spectrum.map(v => v / maxVal);
     const labels = normSpectrum.map((_, i) => Math.round(startWavelength + (i/width)*(endWavelength - startWavelength)));
 
@@ -104,12 +106,11 @@
     const peakWavelength = labels[peakIndex];
     const peakValue = normSpectrum[peakIndex].toFixed(3);
 
-    // Destroy previous chart if exists to prevent overlaps
     if(chartInstance) {
       chartInstance.destroy();
+      chartInstance = null;
     }
 
-    // Gradient fill for area under the curve with saturated spectral colors
     const gradient = createSpectrumGradient(ctx, canvas.width);
 
     chartInstance = new Chart(ctx, {
@@ -187,12 +188,14 @@
         }
       }]
     });
+
+    console.log(`Peak wavelength: ${peakWavelength} nm, Absorbance: ${peakValue}`);
   }
 
-  // Event listener for file upload
   document.getElementById('upload').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
+
     const reader = new FileReader();
     reader.onload = evt => {
       imgElem.src = evt.target.result;
