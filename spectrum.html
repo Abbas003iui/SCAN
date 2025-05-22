@@ -9,165 +9,110 @@
       font-family: Arial, sans-serif;
       text-align: center;
       background: #f5f5f5;
-      margin: 0;
       padding: 20px;
-    }
-    canvas {
-      max-width: 90%;
-      margin: 20px auto;
     }
     #uploadedImage {
       max-width: 400px;
       max-height: 300px;
       margin-top: 20px;
       border: 1px solid #ccc;
+      display: none;
     }
-    .upload {
-      margin-top: 20px;
+    #spectrumChart {
+      max-width: 90%;
+      margin: 20px auto;
     }
   </style>
 </head>
 <body>
   <h1>Light Spectrum Analyzer</h1>
-  <input type="file" accept="image/*" id="upload" class="upload" />
+  <input type="file" id="upload" accept="image/*" />
   <br />
-  <img id="uploadedImage" alt="Uploaded Image will appear here" style="display:none;" />
+  <img id="uploadedImage" alt="Uploaded Image" />
   <canvas id="spectrumChart" width="800" height="400"></canvas>
 
   <script>
-    const ctx = document.getElementById('spectrumChart').getContext('2d');
-    const uploadedImageElem = document.getElementById('uploadedImage');
-    let chartInstance = null; // keep track of chart instance
+    const imgElem = document.getElementById('uploadedImage');
+    const canvasCtx = document.getElementById('spectrumChart').getContext('2d');
+    let chartInstance = null;
 
     function getColor(wavelength) {
-      if (wavelength >= 380 && wavelength <= 750) {
-        let r = 0, g = 0, b = 0;
-        if (wavelength < 440) {
-          r = -(wavelength - 440) / (440 - 380);
-          b = 1;
-        } else if (wavelength < 490) {
-          g = (wavelength - 440) / (490 - 440);
-          b = 1;
-        } else if (wavelength < 510) {
-          g = 1;
-          b = -(wavelength - 510) / (510 - 490);
-        } else if (wavelength < 580) {
-          r = (wavelength - 510) / (580 - 510);
-          g = 1;
-        } else if (wavelength < 645) {
-          r = 1;
-          g = -(wavelength - 645) / (645 - 580);
-        } else {
-          r = 1;
-        }
-        return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, 0.3)`;
+      if (wavelength < 380 || wavelength > 750) return 'rgba(0,0,0,0)';
+      let r=0,g=0,b=0;
+      if (wavelength < 440) {
+        r = -(wavelength - 440) / (440 - 380);
+        b = 1;
+      } else if (wavelength < 490) {
+        g = (wavelength - 440) / (490 - 440);
+        b = 1;
+      } else if (wavelength < 510) {
+        g = 1;
+        b = -(wavelength - 510) / (510 - 490);
+      } else if (wavelength < 580) {
+        r = (wavelength - 510) / (580 - 510);
+        g = 1;
+      } else if (wavelength < 645) {
+        r = 1;
+        g = -(wavelength - 645) / (645 - 580);
+      } else {
+        r = 1;
       }
-      return 'rgba(0,0,0,0)';
+      return `rgba(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)},0.3)`;
     }
 
     function analyzeImage(img) {
-      const canvas = document.createElement('canvas');
-      const ctx2 = canvas.getContext('2d');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx2.drawImage(img, 0, 0);
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCanvas.width = img.width;
+      tempCanvas.height = img.height;
+      tempCtx.drawImage(img, 0, 0);
 
       const spectrum = [];
       const startWavelength = 380;
       const endWavelength = 750;
       const width = img.width;
 
-      for (let x = 0; x < width; x++) {
+      for(let x=0; x<width; x++) {
         let sum = 0;
-        for (let y = 0; y < img.height; y++) {
-          const pixel = ctx2.getImageData(x, y, 1, 1).data;
-          sum += (pixel[0] + pixel[1] + pixel[2]) / 3;
+        for(let y=0; y<img.height; y++) {
+          const pixel = tempCtx.getImageData(x, y, 1, 1).data;
+          sum += (pixel[0] + pixel[1] + pixel[2]) / 3; // average RGB brightness
         }
         spectrum.push(sum / img.height);
       }
 
       const maxVal = Math.max(...spectrum);
       const normSpectrum = spectrum.map(v => v / maxVal);
-      const labels = normSpectrum.map((_, i) => Math.round(startWavelength + (i / width) * (endWavelength - startWavelength)));
+      const labels = normSpectrum.map((_, i) => Math.round(startWavelength + (i/width)*(endWavelength - startWavelength)));
 
-      const peakIndex = normSpectrum.indexOf(Math.max(...normSpectrum));
-      const peakWavelength = labels[peakIndex];
-      const peakValue = normSpectrum[peakIndex].toFixed(2);
+      if(chartInstance) {
+        chartInstance.destroy();
+      }
 
-      document.getElementById("spectrumChart").scrollIntoView();
-
-      const data = {
-        labels: labels,
-        datasets: [{
-          label: 'Normalized Intensity',
-          data: normSpectrum,
-          borderColor: 'black',
-          backgroundColor: labels.map(w => getColor(w)),
-          fill: true,
-          tension: 0.3
-        }]
-      };
-
-      const config = {
+      chartInstance = new Chart(canvasCtx, {
         type: 'line',
-        data: data,
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Normalized Intensity',
+            data: normSpectrum,
+            borderColor: 'black',
+            backgroundColor: labels.map(w => getColor(w)),
+            fill: true,
+            tension: 0.3
+          }]
+        },
         options: {
           responsive: true,
           scales: {
             x: {
               title: { display: true, text: 'Wavelength (nm)' },
-              ticks: {
-                autoSkip: true,
-                maxTicksLimit: 10
-              },
               min: 380,
-              max: 750
+              max: 750,
+              ticks: { maxTicksLimit: 10, autoSkip: true }
             },
             y: {
               title: { display: true, text: 'Normalized Absorbance' },
               min: 0,
               max: 1
             }
-          },
-          plugins: {
-            tooltip: {
-              callbacks: {
-                label: (ctx) => `Absorbance: ${ctx.formattedValue}`
-              }
-            },
-            title: {
-              display: true,
-              text: `Peak Wavelength: ${peakWavelength} nm | Absorbance: ${peakValue}`
-            }
-          }
-        }
-      };
-
-      // Destroy previous chart if it exists to avoid overlap
-      if (chartInstance) {
-        chartInstance.destroy();
-      }
-      chartInstance = new Chart(ctx, config);
-    }
-
-    document.getElementById('upload').addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = function(evt) {
-        const img = new Image();
-        img.onload = function() {
-          // Show uploaded image on page
-          uploadedImageElem.src = img.src;
-          uploadedImageElem.style.display = 'block';
-
-          analyzeImage(img);
-        };
-        img.src = evt.target.result;
-      };
-      reader.readAsDataURL(file);
-    });
-  </script>
-</body>
-</html>
