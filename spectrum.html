@@ -25,7 +25,7 @@
     canvas {
       width: 100% !important;
       height: auto !important;
-      margin-top: 40px;
+      margin-top: 20px;
     }
 
     input[type="file"] {
@@ -38,6 +38,16 @@
       border: 1px solid #aaa;
       border-radius: 6px;
     }
+
+    .chart-section {
+      margin-bottom: 50px;
+    }
+
+    h2 {
+      margin-bottom: 10px;
+      font-size: 20px;
+      color: #333;
+    }
   </style>
 </head>
 <body>
@@ -46,7 +56,7 @@
   <p>Upload <strong>blank image</strong> and <strong>sample image</strong> to view normalized absorbance and transmittance plots.</p>
 
   <input type="file" accept="image/*" id="blankUpload">
-  <input type="file" accept="image/*" id="sampleUpload">
+  <input type="file" accept="image/*" id="sampleUpload" disabled>
 
   <div class="preview-container">
     <img id="blankPreview" style="display:none;" />
@@ -54,8 +64,14 @@
   </div>
 
   <div id="chartContainer">
-    <canvas id="absorbanceChart"></canvas>
-    <canvas id="transmittanceChart"></canvas>
+    <div class="chart-section">
+      <h2>Absorbance Spectrum</h2>
+      <canvas id="absorbanceChart"></canvas>
+    </div>
+    <div class="chart-section">
+      <h2>Transmittance Spectrum</h2>
+      <canvas id="transmittanceChart"></canvas>
+    </div>
   </div>
 
   <script>
@@ -85,13 +101,13 @@
     }
 
     function wavelengthToColor(wavelength) {
-      if (wavelength < 440) return "#8B00FF"; // Violet
-      if (wavelength < 490) return "#0000FF"; // Blue
-      if (wavelength < 510) return "#00FFFF"; // Cyan
-      if (wavelength < 580) return "#00FF00"; // Green
-      if (wavelength < 600) return "#FFFF00"; // Yellow
-      if (wavelength < 645) return "#FF7F00"; // Orange
-      return "#FF0000"; // Red
+      if (wavelength < 440) return "#8B00FF";
+      if (wavelength < 490) return "#0000FF";
+      if (wavelength < 510) return "#00FFFF";
+      if (wavelength < 580) return "#00FF00";
+      if (wavelength < 600) return "#FFFF00";
+      if (wavelength < 645) return "#FF7F00";
+      return "#FF0000";
     }
 
     function plotBothSpectra(sampleSpectrum, width) {
@@ -107,7 +123,7 @@
           const I0 = blankSpectrum[i];
           const T = (I0 > 0) ? I / I0 : 0;
           const A = (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
-          transmittance.push(T * 100); // %T
+          transmittance.push(T * 100);
           absorbance.push(A);
         }
       } else {
@@ -115,7 +131,6 @@
         transmittance = sampleSpectrum.map(() => 0);
       }
 
-      // Normalize absorbance
       const maxAbs = Math.max(...absorbance);
       absorbance = absorbance.map(a => maxAbs > 0 ? a / maxAbs : 0);
 
@@ -126,9 +141,9 @@
       const absPoints = labels.map((label, i) => ({ x: label, y: absorbance[i] }));
       const transPoints = labels.map((label, i) => ({ x: label, y: transmittance[i] }));
 
-      // Gradient under curve
       const absCtx = document.getElementById('absorbanceChart').getContext('2d');
       const transCtx = document.getElementById('transmittanceChart').getContext('2d');
+
       const gradient = absCtx.createLinearGradient(0, 0, absCtx.canvas.width, 0);
       for (let i = 0; i <= 1; i += 0.05) {
         const w = startWavelength + i * (endWavelength - startWavelength);
@@ -144,7 +159,7 @@
           datasets: [{
             label: 'Absorbance',
             data: absPoints,
-            borderColor: 'black',
+            borderColor: 'darkblue',
             backgroundColor: gradient,
             fill: 'origin',
             pointRadius: 0,
@@ -169,7 +184,11 @@
           plugins: {
             title: {
               display: true,
-              text: `Absorbance (Normalized) - Peak: ${peakValue} at ${peakWavelength} nm`
+              text: `Peak Absorbance: ${peakValue} at ${peakWavelength} nm`,
+              font: {
+                size: 16,
+                weight: 'bold'
+              }
             },
             legend: { display: false }
           }
@@ -182,7 +201,7 @@
           datasets: [{
             label: 'Transmittance',
             data: transPoints,
-            borderColor: 'black',
+            borderColor: 'darkgreen',
             backgroundColor: gradient,
             fill: 'origin',
             pointRadius: 0,
@@ -207,7 +226,11 @@
           plugins: {
             title: {
               display: true,
-              text: `Transmittance (%) Spectrum`
+              text: `Transmittance (%) Spectrum`,
+              font: {
+                size: 16,
+                weight: 'bold'
+              }
             },
             legend: { display: false }
           }
@@ -228,6 +251,7 @@
             blankSpectrum = spectrum;
             document.getElementById('blankPreview').src = img.src;
             document.getElementById('blankPreview').style.display = 'inline';
+            document.getElementById('sampleUpload').disabled = false;
           } else {
             document.getElementById('samplePreview').src = img.src;
             document.getElementById('samplePreview').style.display = 'inline';
