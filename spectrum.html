@@ -13,8 +13,10 @@
       padding: 20px;
     }
     canvas {
-      max-width: 90%;
+      width: 800px !important;
+      height: 400px !important;
       margin: 20px auto;
+      background-color: #fff;
     }
     .upload {
       margin: 10px;
@@ -23,16 +25,15 @@
 </head>
 <body>
   <h1>Light Spectrum Analyzer</h1>
-  <p>1. Upload <strong>blank/reference image</strong> (no sample)<br>2. Then upload the <strong>sample image</strong> to analyze absorbance</p>
+  <p>1. Upload <strong>blank/reference image</strong><br>2. Upload the <strong>sample image</strong> to see absorbance</p>
   <input type="file" accept="image/*" id="blankUpload" class="upload" />
   <input type="file" accept="image/*" id="sampleUpload" class="upload" />
-  <canvas id="spectrumChart" width="800" height="400"></canvas>
+  <br>
+  <canvas id="spectrumChart"></canvas>
 
   <script>
-    const chartCanvas = document.getElementById('spectrumChart');
-    const ctx = chartCanvas.getContext('2d');
+    const ctx = document.getElementById('spectrumChart').getContext('2d');
     let chart;
-
     let blankSpectrum = [];
 
     function getColor(wavelength) {
@@ -87,11 +88,12 @@
 
       const absorbance = normalizedSample.map((I, i) => {
         const I0 = normalizedBlank[i];
+        let A = 0;
         if (I > 0 && I0 > 0) {
-          const A = Math.log10(I0 / I);
-          return Math.max(0, Math.min(A, 1)); // Clamp to [0, 1]
+          A = Math.log10(I0 / I);
         }
-        return 0;
+        // Clamp absorbance strictly between 0 and 1
+        return Math.max(0, Math.min(A, 1));
       });
 
       const labels = absorbance.map((_, i) => Math.round(380 + (i / absorbance.length) * (750 - 380)));
@@ -105,8 +107,6 @@
     function plotChart(labels, absorbance, peakWavelength, peakValue) {
       if (chart) chart.destroy();
 
-      const backgroundColors = labels.map(w => getColor(w));
-
       chart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -117,20 +117,23 @@
             borderColor: 'black',
             borderWidth: 2,
             pointRadius: 0,
-            backgroundColor: (ctx) => {
-              const gradient = ctx.chart.ctx.createLinearGradient(0, 0, chartCanvas.width, 0);
+            fill: true,
+            backgroundColor: function(context) {
+              const chartCtx = context.chart.ctx;
+              const width = context.chart.width;
+              const gradient = chartCtx.createLinearGradient(0, 0, width, 0);
               labels.forEach((w, i) => {
                 const stop = i / (labels.length - 1);
                 gradient.addColorStop(stop, getColor(w));
               });
               return gradient;
             },
-            fill: true,
             tension: 0.3
           }]
         },
         options: {
-          responsive: true,
+          responsive: false,
+          maintainAspectRatio: false,
           scales: {
             x: {
               title: { display: true, text: 'Wavelength (nm)' },
@@ -140,7 +143,10 @@
             y: {
               title: { display: true, text: 'Absorbance' },
               min: 0,
-              max: 1
+              max: 1,
+              ticks: {
+                stepSize: 0.1
+              }
             }
           },
           plugins: {
@@ -166,8 +172,8 @@
       const reader = new FileReader();
       reader.onload = function(evt) {
         const img = new Image();
-        img.onload = function() {
-          analyzeImage(img, (spectrum) => {
+        img.onload = () => {
+          analyzeImage(img, spectrum => {
             blankSpectrum = spectrum;
             alert("Blank/reference image loaded. Now upload the sample image.");
           });
@@ -182,13 +188,12 @@
         alert("Please upload the blank/reference image first.");
         return;
       }
-
       const file = e.target.files[0];
       const reader = new FileReader();
       reader.onload = function(evt) {
         const img = new Image();
-        img.onload = function() {
-          analyzeImage(img, (sampleSpectrum) => {
+        img.onload = () => {
+          analyzeImage(img, sampleSpectrum => {
             computeAbsorbance(sampleSpectrum);
           });
         };
