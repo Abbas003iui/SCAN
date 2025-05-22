@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>UV-Vis Absorbance Spectrum Analyzer</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -37,7 +38,6 @@
       justify-content: center;
       gap: 40px;
       margin: 20px 0;
-      flex-wrap: wrap;
     }
 
     .preview-container img {
@@ -66,7 +66,7 @@
     <ol>
       <li>Upload a <strong>blank image</strong> (spectrum without sample).</li>
       <li>Upload the <strong>sample image</strong> (spectrum with sample).</li>
-      <li>The graph will display the <strong>absorbance spectrum</strong> with wavelength-based color fill (380–750 nm).</li>
+      <li>The graph will display the <strong>absorbance spectrum</strong> from 380–750 nm.</li>
     </ol>
   </div>
 
@@ -103,7 +103,6 @@
       canvas.width = img.width;
       canvas.height = img.height;
       ctx.drawImage(img, 0, 0);
-
       const spectrum = [];
 
       for (let x = 0; x < img.width; x++) {
@@ -134,13 +133,12 @@
       );
 
       let absorbance = sampleSpectrum;
-
       if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
         absorbance = sampleSpectrum.map((I, i) => {
           const I0 = blankSpectrum[i];
-          let A = (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
-          // Clamp absorbance between 0 and 1
-          return Math.max(0, Math.min(1, A));
+          if (I0 <= 0 || I <= 0) return 0;
+          let A = Math.log10(I0 / I);
+          return Math.max(0, Math.min(A, 1)); // Clamp to [0, 1]
         });
       }
 
@@ -169,7 +167,6 @@
             backgroundColor: function(ctx) {
               const chartArea = ctx.chart.chartArea;
               if (!chartArea) return null;
-
               const gradient = ctx.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
               for (let i = 0; i <= 1; i += 0.1) {
                 const w = startWavelength + i * (endWavelength - startWavelength);
