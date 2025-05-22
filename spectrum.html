@@ -136,9 +136,11 @@
       if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
         absorbance = sampleSpectrum.map((I, i) => {
           const I0 = blankSpectrum[i];
-          const A = (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
-          return Math.min(Math.max(A / 2, 0), 1); // Normalize A to 0-1 range
+          return (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
         });
+
+        const maxAbs = Math.max(...absorbance);
+        absorbance = absorbance.map(A => Math.min(Math.max(A / maxAbs, 0), 1));
       }
 
       const peakIndex = absorbance.indexOf(Math.max(...absorbance));
