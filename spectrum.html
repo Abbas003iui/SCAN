@@ -37,8 +37,9 @@
   const ctx = canvas.getContext('2d');
   let chartInstance = null;
 
-  function getColor(wavelength) {
-    if (wavelength < 380 || wavelength > 750) return 'rgba(0,0,0,0)';
+  // Adjusted getColor function with alpha parameter for saturation control
+  function getColor(wavelength, alpha=0.85) {
+    if (wavelength < 380 || wavelength > 750) return `rgba(0,0,0,0)`;
     let r=0,g=0,b=0;
     if (wavelength < 440) {
       r = -(wavelength - 440) / (440 - 380);
@@ -58,9 +59,10 @@
     } else {
       r = 1;
     }
-    return `rgba(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)},0.4)`;
+    return `rgba(${Math.round(r*255)},${Math.round(g*255)},${Math.round(b*255)},${alpha})`;
   }
 
+  // Creates a horizontal gradient across the canvas width to fill area with spectral colors
   function createSpectrumGradient(ctx, width) {
     const gradient = ctx.createLinearGradient(0, 0, width, 0);
     const step = 10;
@@ -71,6 +73,7 @@
     return gradient;
   }
 
+  // Analyzes image brightness spectrum horizontally, normalizes, and draws chart
   function analyzeImage(img) {
     const tempCanvas = document.createElement('canvas');
     const tempCtx = tempCanvas.getContext('2d');
@@ -96,27 +99,43 @@
     const normSpectrum = spectrum.map(v => v / maxVal);
     const labels = normSpectrum.map((_, i) => Math.round(startWavelength + (i/width)*(endWavelength - startWavelength)));
 
-    // Destroy previous chart if exists
+    // Find peak data
+    const peakIndex = normSpectrum.indexOf(Math.max(...normSpectrum));
+    const peakWavelength = labels[peakIndex];
+    const peakValue = normSpectrum[peakIndex].toFixed(3);
+
+    // Destroy previous chart if exists to prevent overlaps
     if(chartInstance) {
       chartInstance.destroy();
     }
 
-    // Create the gradient fill
+    // Gradient fill for area under the curve with saturated spectral colors
     const gradient = createSpectrumGradient(ctx, canvas.width);
 
     chartInstance = new Chart(ctx, {
       type: 'line',
       data: {
         labels: labels,
-        datasets: [{
-          label: 'Normalized Intensity',
-          data: normSpectrum,
-          borderColor: 'black',
-          backgroundColor: gradient,
-          fill: true,
-          tension: 0.3,
-          pointRadius: 0
-        }]
+        datasets: [
+          {
+            label: 'Normalized Intensity',
+            data: normSpectrum,
+            borderColor: 'black',
+            backgroundColor: gradient,
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0
+          },
+          {
+            label: 'Peak',
+            data: labels.map((wl, i) => i === peakIndex ? normSpectrum[i] : null),
+            borderColor: 'red',
+            backgroundColor: 'red',
+            pointRadius: 7,
+            pointHoverRadius: 9,
+            showLine: false
+          }
+        ]
       },
       options: {
         responsive: true,
@@ -136,7 +155,7 @@
         plugins: {
           title: {
             display: true,
-            text: 'Light Spectrum Intensity'
+            text: `Light Spectrum Intensity - Peak: ${peakWavelength} nm, Absorbance: ${peakValue}`
           },
           tooltip: {
             callbacks: {
@@ -147,10 +166,30 @@
             display: false
           }
         }
-      }
+      },
+      plugins: [{
+        id: 'peakLine',
+        afterDraw(chart) {
+          const xScale = chart.scales.x;
+          const yScale = chart.scales.y;
+          const ctx = chart.ctx;
+          const peakPixel = xScale.getPixelForValue(peakWavelength);
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.strokeStyle = 'red';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([5,5]);
+          ctx.moveTo(peakPixel, yScale.top);
+          ctx.lineTo(peakPixel, yScale.bottom);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }]
     });
   }
 
+  // Event listener for file upload
   document.getElementById('upload').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
@@ -160,4 +199,8 @@
       imgElem.style.display = 'block';
       imgElem.onload = () => analyzeImage(imgElem);
     };
-    reader.readAsDataURL(fi
+    reader.readAsDataURL(file);
+  });
+</script>
+</body>
+</html>
