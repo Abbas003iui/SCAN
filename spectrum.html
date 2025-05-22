@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>UV-Vis Absorbance Spectrum</title>
+  <title>UV-Vis Absorbance and Transmittance</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
@@ -14,7 +14,7 @@
 
     #chartContainer {
       width: 100%;
-      max-width: 900px;
+      max-width: 950px;
       margin: auto;
       background: white;
       padding: 20px;
@@ -25,6 +25,7 @@
     canvas {
       width: 100% !important;
       height: auto !important;
+      margin-top: 40px;
     }
 
     input[type="file"] {
@@ -41,8 +42,8 @@
 </head>
 <body>
 
-  <h1>UV-Vis Absorbance Spectrum</h1>
-  <p>Upload <strong>blank image</strong> and <strong>sample image</strong> to generate normalized absorbance plot.</p>
+  <h1>UV-Vis Absorbance and Transmittance</h1>
+  <p>Upload <strong>blank image</strong> and <strong>sample image</strong> to view normalized absorbance and transmittance plots.</p>
 
   <input type="file" accept="image/*" id="blankUpload">
   <input type="file" accept="image/*" id="sampleUpload">
@@ -53,14 +54,16 @@
   </div>
 
   <div id="chartContainer">
-    <canvas id="spectrumChart"></canvas>
+    <canvas id="absorbanceChart"></canvas>
+    <canvas id="transmittanceChart"></canvas>
   </div>
 
   <script>
     const startWavelength = 380;
     const endWavelength = 750;
     let blankSpectrum = null;
-    let chart = null;
+    let absorbanceChart = null;
+    let transmittanceChart = null;
 
     function extractSpectrum(img) {
       const canvas = document.createElement('canvas');
@@ -91,20 +94,28 @@
       return "#FF0000"; // Red
     }
 
-    function plotSpectrum(sampleSpectrum, width) {
+    function plotBothSpectra(sampleSpectrum, width) {
       const labels = sampleSpectrum.map((_, i) =>
         Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
       );
 
-      let absorbance = sampleSpectrum;
+      let absorbance = [], transmittance = [];
+
       if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
-        absorbance = sampleSpectrum.map((I, i) => {
+        for (let i = 0; i < sampleSpectrum.length; i++) {
+          const I = sampleSpectrum[i];
           const I0 = blankSpectrum[i];
-          return (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
-        });
+          const T = (I0 > 0) ? I / I0 : 0;
+          const A = (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
+          transmittance.push(T * 100); // %T
+          absorbance.push(A);
+        }
+      } else {
+        absorbance = [...sampleSpectrum];
+        transmittance = sampleSpectrum.map(() => 0);
       }
 
-      // Normalize absorbance 0–1
+      // Normalize absorbance
       const maxAbs = Math.max(...absorbance);
       absorbance = absorbance.map(a => maxAbs > 0 ? a / maxAbs : 0);
 
@@ -112,39 +123,36 @@
       const peakWavelength = labels[peakIndex];
       const peakValue = absorbance[peakIndex].toFixed(2);
 
-      const dataPoints = labels.map((label, i) => ({
-        x: label,
-        y: absorbance[i]
-      }));
+      const absPoints = labels.map((label, i) => ({ x: label, y: absorbance[i] }));
+      const transPoints = labels.map((label, i) => ({ x: label, y: transmittance[i] }));
 
-      const ctx = document.getElementById('spectrumChart').getContext('2d');
-      if (chart) chart.destroy();
-
-      // Create custom gradient for under the line
-      const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
+      // Gradient under curve
+      const absCtx = document.getElementById('absorbanceChart').getContext('2d');
+      const transCtx = document.getElementById('transmittanceChart').getContext('2d');
+      const gradient = absCtx.createLinearGradient(0, 0, absCtx.canvas.width, 0);
       for (let i = 0; i <= 1; i += 0.05) {
         const w = startWavelength + i * (endWavelength - startWavelength);
         gradient.addColorStop(i, wavelengthToColor(w));
       }
 
-      chart = new Chart(ctx, {
+      if (absorbanceChart) absorbanceChart.destroy();
+      if (transmittanceChart) transmittanceChart.destroy();
+
+      absorbanceChart = new Chart(absCtx, {
         type: 'line',
         data: {
-          datasets: [
-            {
-              label: 'Absorbance',
-              data: dataPoints,
-              borderColor: 'black',
-              backgroundColor: gradient,
-              fill: 'origin', // fill under the line only
-              pointRadius: 0,
-              tension: 0.3
-            }
-          ]
+          datasets: [{
+            label: 'Absorbance',
+            data: absPoints,
+            borderColor: 'black',
+            backgroundColor: gradient,
+            fill: 'origin',
+            pointRadius: 0,
+            tension: 0.3
+          }]
         },
         options: {
           responsive: true,
-          maintainAspectRatio: true,
           scales: {
             x: {
               type: 'linear',
@@ -161,11 +169,47 @@
           plugins: {
             title: {
               display: true,
-              text: `Peak Absorbance: ${peakValue} at ${peakWavelength} nm`
+              text: `Absorbance (Normalized) - Peak: ${peakValue} at ${peakWavelength} nm`
             },
-            legend: {
-              display: false
+            legend: { display: false }
+          }
+        }
+      });
+
+      transmittanceChart = new Chart(transCtx, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: 'Transmittance',
+            data: transPoints,
+            borderColor: 'black',
+            backgroundColor: gradient,
+            fill: 'origin',
+            pointRadius: 0,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Wavelength (nm)' },
+              min: startWavelength,
+              max: endWavelength
+            },
+            y: {
+              title: { display: true, text: 'Transmittance (%)' },
+              min: 0,
+              max: 100
             }
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: `Transmittance (%) Spectrum`
+            },
+            legend: { display: false }
           }
         }
       });
@@ -187,7 +231,7 @@
           } else {
             document.getElementById('samplePreview').src = img.src;
             document.getElementById('samplePreview').style.display = 'inline';
-            plotSpectrum(spectrum, img.width);
+            plotBothSpectra(spectrum, img.width);
           }
         };
         img.src = evt.target.result;
