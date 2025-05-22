@@ -2,31 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>UV-Vis Absorbance Spectrum Analyzer</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      background: #f5f5f5;
-      margin: 20px;
-    }
-
-    canvas {
-      max-width: 900px;
-      height: auto !important;
+      background: #f0f0f0;
+      margin: 0;
+      padding: 20px;
     }
 
     #chartContainer {
-      width: 100%;
       max-width: 900px;
       margin: 20px auto;
-      aspect-ratio: 2 / 1;
-      background: white;
       padding: 10px;
+      background: white;
       border-radius: 10px;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    canvas {
+      width: 100% !important;
+      height: auto !important;
     }
 
     .upload {
@@ -36,7 +35,7 @@
     .preview-container {
       display: flex;
       justify-content: center;
-      gap: 40px;
+      gap: 30px;
       margin: 20px 0;
     }
 
@@ -49,11 +48,11 @@
     #instructions {
       max-width: 800px;
       margin: auto;
-      text-align: left;
+      background: white;
       padding: 20px;
-      background: #fff;
       border-radius: 10px;
-      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      box-shadow: 0 0 8px rgba(0,0,0,0.05);
+      text-align: left;
     }
   </style>
 </head>
@@ -64,9 +63,9 @@
   <div id="instructions">
     <h2>📘 Instructions:</h2>
     <ol>
-      <li>Upload a <strong>blank image</strong> (spectrum without sample).</li>
-      <li>Upload the <strong>sample image</strong> (spectrum with sample).</li>
-      <li>The graph will display the <strong>absorbance spectrum</strong> from 380–750 nm.</li>
+      <li>Upload a <strong>blank image</strong> (no sample).</li>
+      <li>Upload a <strong>sample image</strong> (with analyte).</li>
+      <li>Graph will display the <strong>absorbance spectrum</strong> (A = log₁₀(I₀/I), clamped 0–1).</li>
     </ol>
   </div>
 
@@ -78,11 +77,11 @@
 
   <div class="preview-container">
     <div>
-      <p><strong>Blank Image</strong></p>
+      <p><strong>Blank</strong></p>
       <img id="blankPreview" style="display:none;" />
     </div>
     <div>
-      <p><strong>Sample Image</strong></p>
+      <p><strong>Sample</strong></p>
       <img id="samplePreview" style="display:none;" />
     </div>
   </div>
@@ -109,7 +108,8 @@
         let sum = 0;
         for (let y = 0; y < img.height; y++) {
           const pixel = ctx.getImageData(x, y, 1, 1).data;
-          sum += (pixel[0] + pixel[1] + pixel[2]) / 3;
+          const brightness = (pixel[0] + pixel[1] + pixel[2]) / 3;
+          sum += brightness;
         }
         spectrum.push(sum / img.height);
       }
@@ -118,13 +118,13 @@
     }
 
     function wavelengthToColor(wavelength) {
-      if (wavelength < 440) return "#8B00FF"; // Violet
-      if (wavelength < 490) return "#0000FF"; // Blue
-      if (wavelength < 510) return "#00FFFF"; // Cyan
-      if (wavelength < 580) return "#00FF00"; // Green
-      if (wavelength < 600) return "#FFFF00"; // Yellow
-      if (wavelength < 645) return "#FF7F00"; // Orange
-      return "#FF0000"; // Red
+      if (wavelength < 440) return "#8B00FF";
+      if (wavelength < 490) return "#0000FF";
+      if (wavelength < 510) return "#00FFFF";
+      if (wavelength < 580) return "#00FF00";
+      if (wavelength < 600) return "#FFFF00";
+      if (wavelength < 645) return "#FF7F00";
+      return "#FF0000";
     }
 
     function plotSpectrum(sampleSpectrum, width) {
@@ -138,7 +138,7 @@
           const I0 = blankSpectrum[i];
           if (I0 <= 0 || I <= 0) return 0;
           let A = Math.log10(I0 / I);
-          return Math.max(0, Math.min(A, 1)); // Clamp to [0, 1]
+          return Math.max(0, Math.min(A, 1)); // Clamp between 0–1
         });
       }
 
@@ -146,28 +146,25 @@
       const peakWavelength = labels[peakIndex];
       const peakValue = absorbance[peakIndex].toFixed(2);
 
-      const dataPoints = labels.map((label, i) => ({
-        x: label,
-        y: absorbance[i]
-      }));
-
       const ctx = document.getElementById('spectrumChart').getContext('2d');
       if (chart) chart.destroy();
 
       chart = new Chart(ctx, {
         type: 'line',
         data: {
+          labels: labels,
           datasets: [{
             label: 'Absorbance',
-            data: dataPoints,
-            fill: true,
+            data: absorbance,
             borderColor: 'black',
+            borderWidth: 2,
+            fill: true,
             pointRadius: 0,
-            tension: 0.3,
-            backgroundColor: function(ctx) {
-              const chartArea = ctx.chart.chartArea;
+            tension: 0.4, // Makes the line smooth like a trendline
+            backgroundColor: function(context) {
+              const chartArea = context.chart.chartArea;
               if (!chartArea) return null;
-              const gradient = ctx.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+              const gradient = context.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
               for (let i = 0; i <= 1; i += 0.1) {
                 const w = startWavelength + i * (endWavelength - startWavelength);
                 gradient.addColorStop(i, wavelengthToColor(w));
@@ -178,11 +175,10 @@
         },
         options: {
           responsive: true,
-          maintainAspectRatio: true,
-          aspectRatio: 2,
+          maintainAspectRatio: false,
+          aspectRatio: 2.2,
           scales: {
             x: {
-              type: 'linear',
               title: { display: true, text: 'Wavelength (nm)' },
               min: startWavelength,
               max: endWavelength
@@ -200,7 +196,7 @@
             },
             tooltip: {
               callbacks: {
-                label: ctx => `λ: ${ctx.raw.x} nm | A: ${ctx.raw.y.toFixed(2)}`
+                label: ctx => `λ: ${ctx.label} nm | A: ${ctx.raw.toFixed(2)}`
               }
             },
             legend: { display: false }
@@ -222,7 +218,7 @@
             blankSpectrum = spectrum;
             document.getElementById('blankPreview').src = img.src;
             document.getElementById('blankPreview').style.display = 'inline';
-            alert("✅ Blank (calibration) image loaded.");
+            alert("✅ Blank (reference) image uploaded.");
           } else {
             document.getElementById('samplePreview').src = img.src;
             document.getElementById('samplePreview').style.display = 'inline';
