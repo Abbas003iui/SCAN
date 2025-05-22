@@ -2,88 +2,54 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>UV-Vis Absorbance Spectrum Analyzer</title>
+  <title>UV-Vis Absorbance Spectrum</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
+      background: #f4f4f4;
       text-align: center;
-      background: #f5f5f5;
-      margin: 20px;
-    }
-
-    canvas {
-      max-width: 900px;
-      height: auto !important;
+      padding: 20px;
     }
 
     #chartContainer {
       width: 100%;
       max-width: 900px;
-      margin: 20px auto;
-      aspect-ratio: 2 / 1;
+      margin: auto;
       background: white;
-      padding: 10px;
-      border-radius: 10px;
+      padding: 20px;
+      border-radius: 12px;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
     }
 
-    .upload {
+    canvas {
+      width: 100% !important;
+      height: auto !important;
+    }
+
+    input[type="file"] {
       margin: 10px;
     }
 
-    .preview-container {
-      display: flex;
-      justify-content: center;
-      gap: 40px;
-      margin: 20px 0;
-    }
-
     .preview-container img {
-      max-height: 150px;
-      border-radius: 8px;
+      max-height: 120px;
+      margin: 10px;
       border: 1px solid #aaa;
-    }
-
-    #instructions {
-      max-width: 800px;
-      margin: auto;
-      text-align: left;
-      padding: 20px;
-      background: #fff;
-      border-radius: 10px;
-      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      border-radius: 6px;
     }
   </style>
 </head>
 <body>
 
-  <h1>🌈 UV-Vis Absorbance Spectrum Analyzer</h1>
+  <h1>UV-Vis Absorbance Spectrum</h1>
+  <p>Upload <strong>blank image</strong> and <strong>sample image</strong> to generate normalized absorbance plot.</p>
 
-  <div id="instructions">
-    <h2>📘 Instructions:</h2>
-    <ol>
-      <li>Upload a <strong>blank image</strong> (spectrum without sample).</li>
-      <li>Upload the <strong>sample image</strong> (spectrum with sample).</li>
-      <li>The graph will display the <strong>normalized absorbance spectrum</strong> with a color fill under the line.</li>
-    </ol>
-  </div>
-
-  <input type="file" accept="image/*" id="blankUpload" class="upload" />
-  <label for="blankUpload"><strong>Upload Blank Image</strong></label><br>
-
-  <input type="file" accept="image/*" id="sampleUpload" class="upload" />
-  <label for="sampleUpload"><strong>Upload Sample Image</strong></label>
+  <input type="file" accept="image/*" id="blankUpload">
+  <input type="file" accept="image/*" id="sampleUpload">
 
   <div class="preview-container">
-    <div>
-      <p><strong>Blank Image</strong></p>
-      <img id="blankPreview" style="display:none;" />
-    </div>
-    <div>
-      <p><strong>Sample Image</strong></p>
-      <img id="samplePreview" style="display:none;" />
-    </div>
+    <img id="blankPreview" style="display:none;" />
+    <img id="samplePreview" style="display:none;" />
   </div>
 
   <div id="chartContainer">
@@ -104,7 +70,6 @@
       ctx.drawImage(img, 0, 0);
 
       const spectrum = [];
-
       for (let x = 0; x < img.width; x++) {
         let sum = 0;
         for (let y = 0; y < img.height; y++) {
@@ -113,7 +78,6 @@
         }
         spectrum.push(sum / img.height);
       }
-
       return spectrum;
     }
 
@@ -140,7 +104,7 @@
         });
       }
 
-      // Normalize absorbance to range 0–1
+      // Normalize absorbance 0–1
       const maxAbs = Math.max(...absorbance);
       absorbance = absorbance.map(a => maxAbs > 0 ? a / maxAbs : 0);
 
@@ -156,33 +120,31 @@
       const ctx = document.getElementById('spectrumChart').getContext('2d');
       if (chart) chart.destroy();
 
+      // Create custom gradient for under the line
+      const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
+      for (let i = 0; i <= 1; i += 0.05) {
+        const w = startWavelength + i * (endWavelength - startWavelength);
+        gradient.addColorStop(i, wavelengthToColor(w));
+      }
+
       chart = new Chart(ctx, {
         type: 'line',
         data: {
-          datasets: [{
-            label: 'Absorbance',
-            data: dataPoints,
-            borderColor: 'black',
-            backgroundColor: function(context) {
-              const chartArea = context.chart.chartArea;
-              if (!chartArea) return null;
-
-              const gradient = context.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-              for (let i = 0; i <= 1; i += 0.1) {
-                const w = startWavelength + i * (endWavelength - startWavelength);
-                gradient.addColorStop(i, wavelengthToColor(w));
-              }
-              return gradient;
-            },
-            fill: true,
-            pointRadius: 0,
-            tension: 0.3
-          }]
+          datasets: [
+            {
+              label: 'Absorbance',
+              data: dataPoints,
+              borderColor: 'black',
+              backgroundColor: gradient,
+              fill: 'origin', // fill under the line only
+              pointRadius: 0,
+              tension: 0.3
+            }
+          ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: true,
-          aspectRatio: 2,
           scales: {
             x: {
               type: 'linear',
@@ -201,12 +163,9 @@
               display: true,
               text: `Peak Absorbance: ${peakValue} at ${peakWavelength} nm`
             },
-            tooltip: {
-              callbacks: {
-                label: ctx => `λ: ${ctx.raw.x} nm | A: ${ctx.raw.y.toFixed(2)}`
-              }
-            },
-            legend: { display: false }
+            legend: {
+              display: false
+            }
           }
         }
       });
@@ -225,7 +184,6 @@
             blankSpectrum = spectrum;
             document.getElementById('blankPreview').src = img.src;
             document.getElementById('blankPreview').style.display = 'inline';
-            alert("✅ Blank (calibration) image loaded.");
           } else {
             document.getElementById('samplePreview').src = img.src;
             document.getElementById('samplePreview').style.display = 'inline';
