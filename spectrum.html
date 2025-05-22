@@ -116,7 +116,9 @@
 
       const dataPoints = labels.map((label, i) => ({ x: label, y: normalized[i] }));
       const ctx = document.getElementById('spectrumChart').getContext('2d');
-      if (chart) chart.destroy();
+      if (chart) {
+        chart.destroy();
+      }
 
       const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
       for (let i = 0; i <= 1; i += 0.05) {
@@ -164,11 +166,10 @@
       });
     }
 
-    function tryPlotIfReady(width) {
-      if (blankSpectrum && sampleSpectrum &&
-          blankSpectrum.length === sampleSpectrum.length) {
+    function tryPlotIfReady() {
+      if (blankSpectrum && sampleSpectrum && blankSpectrum.length === sampleSpectrum.length) {
         const absorbance = calculateAbsorbance(blankSpectrum, sampleSpectrum);
-        plotSpectrum(absorbance, width);
+        plotSpectrum(absorbance, blankSpectrum.length);
       }
     }
 
@@ -192,7 +193,7 @@
             document.getElementById('samplePreview').style.display = 'inline';
           }
 
-          tryPlotIfReady(img.width);
+          tryPlotIfReady();
         };
         img.src = evt.target.result;
       };
