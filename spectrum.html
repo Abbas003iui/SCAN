@@ -65,7 +65,7 @@
     <ol>
       <li>Upload a <strong>blank image</strong> (spectrum without sample).</li>
       <li>Upload the <strong>sample image</strong> (spectrum with sample).</li>
-      <li>The graph will display the <strong>absorbance spectrum</strong> with a color fill based on wavelength (380–750 nm).</li>
+      <li>The graph will display the <strong>normalized absorbance spectrum</strong> with a color fill under the line.</li>
     </ol>
   </div>
 
@@ -138,12 +138,11 @@
           const I0 = blankSpectrum[i];
           return (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
         });
-
-        // ✅ Normalize absorbance to [0, 1]
-        const maxAbs = Math.max(...absorbance);
-        const minAbs = Math.min(...absorbance);
-        absorbance = absorbance.map(a => (a - minAbs) / (maxAbs - minAbs));
       }
+
+      // Normalize absorbance to range 0–1
+      const maxAbs = Math.max(...absorbance);
+      absorbance = absorbance.map(a => maxAbs > 0 ? a / maxAbs : 0);
 
       const peakIndex = absorbance.indexOf(Math.max(...absorbance));
       const peakWavelength = labels[peakIndex];
@@ -163,21 +162,21 @@
           datasets: [{
             label: 'Absorbance',
             data: dataPoints,
-            fill: true,
             borderColor: 'black',
-            pointRadius: 0,
-            tension: 0.3,
-            backgroundColor: function(ctx) {
-              const chartArea = ctx.chart.chartArea;
+            backgroundColor: function(context) {
+              const chartArea = context.chart.chartArea;
               if (!chartArea) return null;
 
-              const gradient = ctx.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+              const gradient = context.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
               for (let i = 0; i <= 1; i += 0.1) {
                 const w = startWavelength + i * (endWavelength - startWavelength);
                 gradient.addColorStop(i, wavelengthToColor(w));
               }
               return gradient;
-            }
+            },
+            fill: true,
+            pointRadius: 0,
+            tension: 0.3
           }]
         },
         options: {
@@ -200,7 +199,7 @@
           plugins: {
             title: {
               display: true,
-              text: `Peak Absorbance at ${peakWavelength} nm`
+              text: `Peak Absorbance: ${peakValue} at ${peakWavelength} nm`
             },
             tooltip: {
               callbacks: {
