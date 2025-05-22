@@ -2,38 +2,93 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Absorbance Spectrum Analyzer</title>
+  <title>UV-Vis Absorbance Spectrum Analyzer</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      margin: 2rem;
+      background: #f5f5f5;
+      margin: 20px;
     }
-    input {
-      margin: 1rem;
-    }
-    img {
-      max-width: 300px;
-      margin: 1rem;
-      display: none;
-    }
+
     canvas {
-      max-width: 100%;
+      max-width: 900px;
+      height: auto !important;
+    }
+
+    #chartContainer {
+      width: 100%;
+      max-width: 900px;
+      margin: 20px auto;
+      aspect-ratio: 2 / 1;
+      background: white;
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    .upload {
+      margin: 10px;
+    }
+
+    .preview-container {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      margin: 20px 0;
+    }
+
+    .preview-container img {
+      max-height: 150px;
+      border-radius: 8px;
+      border: 1px solid #aaa;
+    }
+
+    #instructions {
+      max-width: 800px;
+      margin: auto;
+      text-align: left;
+      padding: 20px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
     }
   </style>
 </head>
 <body>
-  <h2>Absorbance Spectrum Analyzer</h2>
-  <p>Upload a blank (calibration) image, then a sample image:</p>
-  <input type="file" id="blankUpload" accept="image/*">
-  <input type="file" id="sampleUpload" accept="image/*">
-  <div>
-    <img id="blankPreview" alt="Blank Preview">
-    <img id="samplePreview" alt="Sample Preview">
+
+  <h1>🌈 UV-Vis Absorbance Spectrum Analyzer</h1>
+
+  <div id="instructions">
+    <h2>📘 Instructions:</h2>
+    <ol>
+      <li>Upload a <strong>blank image</strong> (spectrum without sample).</li>
+      <li>Upload the <strong>sample image</strong> (spectrum with sample).</li>
+      <li>The graph will display the <strong>absorbance spectrum</strong> with a color fill based on wavelength (380–750 nm).</li>
+    </ol>
   </div>
-  <canvas id="spectrumChart"></canvas>
+
+  <input type="file" accept="image/*" id="blankUpload" class="upload" />
+  <label for="blankUpload"><strong>Upload Blank Image</strong></label><br>
+
+  <input type="file" accept="image/*" id="sampleUpload" class="upload" />
+  <label for="sampleUpload"><strong>Upload Sample Image</strong></label>
+
+  <div class="preview-container">
+    <div>
+      <p><strong>Blank Image</strong></p>
+      <img id="blankPreview" style="display:none;" />
+    </div>
+    <div>
+      <p><strong>Sample Image</strong></p>
+      <img id="samplePreview" style="display:none;" />
+    </div>
+  </div>
+
+  <div id="chartContainer">
+    <canvas id="spectrumChart"></canvas>
+  </div>
 
   <script>
     const startWavelength = 380;
@@ -49,6 +104,7 @@
       ctx.drawImage(img, 0, 0);
 
       const spectrum = [];
+
       for (let x = 0; x < img.width; x++) {
         let sum = 0;
         for (let y = 0; y < img.height; y++) {
@@ -57,12 +113,8 @@
         }
         spectrum.push(sum / img.height);
       }
-      return spectrum;
-    }
 
-    function normalizeAbsorbance(absorbance) {
-      const maxA = Math.max(...absorbance);
-      return absorbance.map(a => a / maxA);
+      return spectrum;
     }
 
     function wavelengthToColor(wavelength) {
@@ -81,19 +133,12 @@
       );
 
       let absorbance = sampleSpectrum;
-
       if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
-        const normalizedBlank = normalizeAbsorbance(blankSpectrum);
-        const normalizedSample = normalizeAbsorbance(sampleSpectrum);
-
-        absorbance = normalizedSample.map((I, i) => {
-          const I0 = normalizedBlank[i];
-          const ratio = (I > 0 && I0 > 0) ? I0 / I : 1;
-          let A = Math.log10(ratio);
-          return A > 0 ? A : 0;
+        absorbance = sampleSpectrum.map((I, i) => {
+          const I0 = blankSpectrum[i];
+          const A = (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
+          return Math.min(Math.max(A / 2, 0), 1); // Normalize A to 0-1 range
         });
-
-        absorbance = normalizeAbsorbance(absorbance);
       }
 
       const peakIndex = absorbance.indexOf(Math.max(...absorbance));
@@ -121,6 +166,7 @@
             backgroundColor: function(ctx) {
               const chartArea = ctx.chart.chartArea;
               if (!chartArea) return null;
+
               const gradient = ctx.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
               for (let i = 0; i <= 1; i += 0.1) {
                 const w = startWavelength + i * (endWavelength - startWavelength);
@@ -142,7 +188,7 @@
               max: endWavelength
             },
             y: {
-              title: { display: true, text: 'Absorbance (normalized)' },
+              title: { display: true, text: 'Absorbance' },
               min: 0,
               max: 1
             }
@@ -191,5 +237,6 @@
     document.getElementById('blankUpload').addEventListener('change', e => handleImageUpload(e, true));
     document.getElementById('sampleUpload').addEventListener('change', e => handleImageUpload(e, false));
   </script>
+
 </body>
 </html>
