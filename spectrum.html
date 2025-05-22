@@ -29,7 +29,6 @@
       reader.onload = function (e) {
         const img = new Image();
         img.onload = () => {
-          // Resize image to canvas width
           imgCtx.clearRect(0, 0, imgCanvas.width, imgCanvas.height);
           imgCtx.drawImage(img, 0, 0, imgCanvas.width, imgCanvas.height);
           analyzeSpectrum();
@@ -39,11 +38,11 @@
       reader.readAsDataURL(event.target.files[0]);
     }
 
-    function estimateWavelength(r, g, b) {
-      if (b > r && b > g) return 470;
-      if (g > r && g > b) return 530;
-      if (r > g && r > b) return 650;
-      return 500;
+    function rgbToWavelength(r, g, b) {
+      if (r > g && r > b) return 620 + (r - g - b) * 0.1;
+      if (g > r && g > b) return 510 + (g - r - b) * 0.1;
+      if (b > r && b > g) return 460 + (b - r - g) * 0.1;
+      return 550;
     }
 
     function analyzeSpectrum() {
@@ -52,25 +51,31 @@
       let spectrum = [];
       let maxIntensity = 0;
 
-      for (let x = 0; x < width; x += 2) {
+      for (let x = 0; x < width; x++) {
         const pixel = imgCtx.getImageData(x, y, 1, 1).data;
         const r = pixel[0], g = pixel[1], b = pixel[2];
         const intensity = (r + g + b) / 3;
-        const wavelength = estimateWavelength(r, g, b);
+        const wavelength = Math.round(rgbToWavelength(r, g, b));
         maxIntensity = Math.max(maxIntensity, intensity);
         spectrum.push({ wavelength, intensity });
       }
 
-      // Group by wavelength
+      // Group and average absorbance by wavelength
       let absorbance = {};
+      let counts = {};
+
       spectrum.forEach(p => {
-        const A = -Math.log10((p.intensity + 1) / (maxIntensity + 1)); // Avoid log(0)
-        absorbance[p.wavelength] = (absorbance[p.wavelength] || 0) + A;
+        const A = -Math.log10((p.intensity + 1) / (maxIntensity + 1)); // avoid log(0)
+        if (!absorbance[p.wavelength]) {
+          absorbance[p.wavelength] = 0;
+          counts[p.wavelength] = 0;
+        }
+        absorbance[p.wavelength] += A;
+        counts[p.wavelength]++;
       });
 
-      // Prepare chart data
-      const labels = Object.keys(absorbance).map(Number).sort((a, b) => a - b);
-      const values = labels.map(w => absorbance[w]);
+      let labels = Object.keys(absorbance).map(Number).sort((a, b) => a - b);
+      let values = labels.map(w => absorbance[w] / counts[w]);
 
       const peakIndex = values.indexOf(Math.max(...values));
       const peakWavelength = labels[peakIndex];
@@ -80,17 +85,30 @@
         `Highest Peak: ${peakAbsorbance} at ${peakWavelength} nm`;
 
       if (chart) chart.destroy();
+
       chart = new Chart(chartCtx, {
         type: 'line',
         data: {
           labels,
           datasets: [{
-            label: 'Absorbance vs Wavelength',
+            label: 'Absorbance Spectrum',
             data: values,
-            borderColor: 'blue',
+            borderColor: 'black',
             borderWidth: 2,
-            fill: false,
-            pointRadius: 2
+            fill: {
+              target: 'origin',
+              above: (ctx) => {
+                const x = ctx.chart.data.labels[ctx.p0DataIndex];
+                if (x < 450) return 'rgba(148,0,211,0.3)'; // Violet
+                if (x < 495) return 'rgba(0,0,255,0.3)';   // Blue
+                if (x < 570) return 'rgba(0,255,0,0.3)';   // Green
+                if (x < 590) return 'rgba(255,255,0,0.3)'; // Yellow
+                if (x < 620) return 'rgba(255,165,0,0.3)'; // Orange
+                return 'rgba(255,0,0,0.3)';                // Red
+              }
+            },
+            tension: 0.2,
+            pointRadius: 1
           }]
         },
         options: {
@@ -101,7 +119,9 @@
           },
           scales: {
             x: {
-              title: { display: true, text: 'Wavelength (nm)' }
+              title: { display: true, text: 'Wavelength (nm)' },
+              min: 380,
+              max: 750
             },
             y: {
               title: { display: true, text: 'Absorbance' }
