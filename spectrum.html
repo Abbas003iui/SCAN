@@ -136,9 +136,13 @@
       if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
         absorbance = sampleSpectrum.map((I, i) => {
           const I0 = blankSpectrum[i];
-          const rawAbs = (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
-          return Math.min(Math.max(rawAbs, 0), 1); // Normalize to [0,1]
+          return (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
         });
+
+        // Normalize absorbance to [0, 1]
+        const maxAbs = Math.max(...absorbance);
+        const minAbs = Math.min(...absorbance);
+        absorbance = absorbance.map(a => (a - minAbs) / (maxAbs - minAbs));
       }
 
       const peakIndex = absorbance.indexOf(Math.max(...absorbance));
@@ -188,7 +192,7 @@
               max: endWavelength
             },
             y: {
-              title: { display: true, text: 'Absorbance (Normalized)' },
+              title: { display: true, text: 'Normalized Absorbance' },
               min: 0,
               max: 1
             }
