@@ -1,166 +1,165 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>Light Spectrum Analyzer</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
-      padding: 20px;
       text-align: center;
-      background-color: #f0f0f0;
+      background: #f5f5f5;
     }
     canvas {
-      max-width: 100%;
+      max-width: 90%;
+      margin: 20px auto;
+    }
+    #spectrumBackground {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 100%;
+      z-index: -1;
+    }
+    .upload {
       margin-top: 20px;
-      border: 1px solid #ccc;
-      background-color: white;
-    }
-    #chartCanvas {
-      height: 300px !important;
-    }
-    input[type="file"] {
-      margin-top: 15px;
     }
   </style>
 </head>
 <body>
-  <h2>Light Spectrum Analyzer</h2>
-  <p>Upload an image of a light source to analyze its spectrum:</p>
-  <input type="file" accept="image/*" onchange="loadImage(event)" capture="environment">
-  <canvas id="imageCanvas" width="600" height="150"></canvas>
-  <canvas id="chartCanvas"></canvas>
-  <p id="peakInfo"></p>
+  <h1>Light Spectrum Analyzer</h1>
+  <input type="file" accept="image/*" id="upload" class="upload" />
+  <canvas id="spectrumChart" width="800" height="400"></canvas>
 
   <script>
-    const imgCanvas = document.getElementById("imageCanvas");
-    const imgCtx = imgCanvas.getContext("2d");
-    const chartCtx = document.getElementById("chartCanvas").getContext("2d");
-    let chart;
+    const ctx = document.getElementById('spectrumChart').getContext('2d');
 
-    function loadImage(event) {
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        const img = new Image();
-        img.onload = function() {
-          imgCtx.clearRect(0, 0, imgCanvas.width, imgCanvas.height);
-          imgCtx.drawImage(img, 0, 0, imgCanvas.width, imgCanvas.height);
-          analyzeSpectrum();
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(event.target.files[0]);
+    function getColor(wavelength) {
+      // Convert wavelength to RGB
+      if (wavelength >= 380 && wavelength <= 750) {
+        let r = 0, g = 0, b = 0;
+        if (wavelength < 440) {
+          r = -(wavelength - 440) / (440 - 380);
+          b = 1;
+        } else if (wavelength < 490) {
+          g = (wavelength - 440) / (490 - 440);
+          b = 1;
+        } else if (wavelength < 510) {
+          g = 1;
+          b = -(wavelength - 510) / (510 - 490);
+        } else if (wavelength < 580) {
+          r = (wavelength - 510) / (580 - 510);
+          g = 1;
+        } else if (wavelength < 645) {
+          r = 1;
+          g = -(wavelength - 645) / (645 - 580);
+        } else {
+          r = 1;
+        }
+        return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, 0.3)`;
+      }
+      return 'rgba(0,0,0,0)';
     }
 
-    function rgbToWavelength(r, g, b) {
-      if (r > g && r > b) return 620 + (r - g - b) * 0.1;
-      if (g > r && g > b) return 510 + (g - r - b) * 0.1;
-      if (b > r && b > g) return 460 + (b - r - g) * 0.1;
-      return 550;
+    function createColorGradient() {
+      const gradient = [];
+      for (let i = 380; i <= 750; i++) {
+        gradient.push({x: i, y: 1, color: getColor(i)});
+      }
+      return gradient;
     }
 
-    function analyzeSpectrum() {
-      const y = Math.floor(imgCanvas.height / 2);
-      const width = imgCanvas.width;
-      let spectrum = [];
-      let maxIntensity = 0;
-
+    function analyzeImage(img) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      const spectrum = [];
+      const startWavelength = 380;
+      const endWavelength = 750;
+      const width = img.width;
       for (let x = 0; x < width; x++) {
-        const pixel = imgCtx.getImageData(x, y, 1, 1).data;
-        const r = pixel[0], g = pixel[1], b = pixel[2];
-        const intensity = (r + g + b) / 3;
-        const wavelength = Math.round(rgbToWavelength(r, g, b));
-        maxIntensity = Math.max(maxIntensity, intensity);
-        spectrum.push({ wavelength, intensity });
+        let sum = 0;
+        for (let y = 0; y < img.height; y++) {
+          const pixel = ctx.getImageData(x, y, 1, 1).data;
+          sum += (pixel[0] + pixel[1] + pixel[2]) / 3;
+        }
+        spectrum.push(sum / img.height);
       }
 
-      let absorbance = {};
-      let counts = {};
+      const maxVal = Math.max(...spectrum);
+      const normSpectrum = spectrum.map(v => v / maxVal);
+      const labels = normSpectrum.map((_, i) => Math.round(startWavelength + (i / width) * (endWavelength - startWavelength)));
 
-      spectrum.forEach(p => {
-        const A = -Math.log10((p.intensity + 1) / (maxIntensity + 1));
-        if (!absorbance[p.wavelength]) {
-          absorbance[p.wavelength] = 0;
-          counts[p.wavelength] = 0;
-        }
-        absorbance[p.wavelength] += A;
-        counts[p.wavelength]++;
-      });
-
-      let rawLabels = Object.keys(absorbance).map(Number);
-      let rawValues = rawLabels.map(w => absorbance[w] / counts[w]);
-
-      const fullRange = Array.from({ length: 611 }, (_, i) => i + 190);
-      const absorbanceMap = Object.fromEntries(rawLabels.map((w, i) => [w, rawValues[i]]));
-      const labels = fullRange;
-      const values = fullRange.map(w => absorbanceMap[w] || 0);
-
-      // Normalize absorbance to 0–1
-      const maxAbs = Math.max(...values);
-      const normalizedValues = values.map(v => v / maxAbs);
-
-      const peakIndex = normalizedValues.indexOf(Math.max(...normalizedValues));
+      const peakIndex = normSpectrum.indexOf(Math.max(...normSpectrum));
       const peakWavelength = labels[peakIndex];
-      const peakAbsorbance = normalizedValues[peakIndex].toFixed(2);
-      document.getElementById("peakInfo").innerText =
-        `Highest Absorbance: ${peakAbsorbance} at ${peakWavelength} nm`;
+      const peakValue = normSpectrum[peakIndex].toFixed(2);
 
-      if (chart) chart.destroy();
+      document.getElementById("spectrumChart").scrollIntoView();
 
-      // Fix: Color gradient aligned to real wavelengths (190 to 800 nm)
-      const gradient = chartCtx.createLinearGradient(0, 0, chartCtx.canvas.width, 0);
-      const stops = [
-        { pos: 0.00, color: "#8B00FF" },  // 190 nm (UV violet)
-        { pos: 0.22, color: "#0000FF" },  // ~300 nm (blue)
-        { pos: 0.40, color: "#00FF00" },  // ~400 nm (green)
-        { pos: 0.60, color: "#FFFF00" },  // ~500 nm (yellow)
-        { pos: 0.75, color: "#FF7F00" },  // ~600 nm (orange)
-        { pos: 0.88, color: "#FF0000" },  // ~700 nm (red)
-        { pos: 1.00, color: "#999999" }   // ~800 nm (IR-gray)
-      ];
-      stops.forEach(stop => gradient.addColorStop(stop.pos, stop.color));
+      const data = {
+        labels: labels,
+        datasets: [{
+          label: 'Normalized Intensity',
+          data: normSpectrum,
+          borderColor: 'black',
+          backgroundColor: labels.map(w => getColor(w)),
+          fill: true,
+          tension: 0.3
+        }]
+      };
 
-      chart = new Chart(chartCtx, {
+      const config = {
         type: 'line',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: "Absorbance Spectrum",
-            data: normalizedValues,
-            borderColor: "#000",
-            backgroundColor: gradient,
-            fill: true,
-            tension: 0.4,
-            pointRadius: 0
-          }]
-        },
+        data: data,
         options: {
           responsive: true,
-          maintainAspectRatio: true,
-          plugins: {
-            legend: { display: false },
-            tooltip: { mode: 'index', intersect: false }
-          },
           scales: {
             x: {
-              title: { display: true, text: "Wavelength (nm)" },
-              min: 190,
-              max: 800,
+              title: { display: true, text: 'Wavelength (nm)' },
               ticks: {
-                callback: (value) => value % 100 === 0 ? value + ' nm' : '',
-                maxTicksLimit: 8
-              }
+                autoSkip: true,
+                maxTicksLimit: 10
+              },
+              min: 380,
+              max: 750
             },
             y: {
-              title: { display: true, text: "Absorbance (normalized)" },
-              beginAtZero: true,
+              title: { display: true, text: 'Normalized Absorbance' },
+              min: 0,
               max: 1
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `Absorbance: ${ctx.formattedValue}`
+              }
+            },
+            title: {
+              display: true,
+              text: `Peak Wavelength: ${peakWavelength} nm | Absorbance: ${peakValue}`
             }
           }
         }
-      });
+      };
+      new Chart(ctx, config);
     }
+
+    document.getElementById('upload').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const img = new Image();
+        img.onload = function() {
+          analyzeImage(img);
+        };
+        img.src = evt.target.result;
+      };
+      if (file) reader.readAsDataURL(file);
+    });
   </script>
 </body>
 </html>
