@@ -5,17 +5,29 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: Arial, padding: 20px; text-align: center; }
-    canvas { margin-top: 20px; max-width: 100%; border: 1px solid #ccc; }
-    input[type=file] { margin-top: 10px; }
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      text-align: center;
+      background-color: #f0f0f0;
+    }
+    canvas {
+      max-width: 100%;
+      margin-top: 20px;
+      border: 1px solid #ccc;
+      background-color: white;
+    }
+    input[type="file"] {
+      margin-top: 15px;
+    }
   </style>
 </head>
 <body>
   <h2>Light Spectrum Analyzer</h2>
-  <p>Select or capture a photo to analyze light spectrum:</p>
+  <p>Upload an image of a light source to analyze its spectrum:</p>
   <input type="file" accept="image/*" onchange="loadImage(event)" capture="environment">
   <canvas id="imageCanvas" width="600" height="150"></canvas>
-  <canvas id="chartCanvas" width="600" height="300"></canvas>
+  <canvas id="chartCanvas" width="600" height="350"></canvas>
   <p id="peakInfo"></p>
 
   <script>
@@ -26,9 +38,9 @@
 
     function loadImage(event) {
       const reader = new FileReader();
-      reader.onload = function (e) {
+      reader.onload = function(e) {
         const img = new Image();
-        img.onload = () => {
+        img.onload = function() {
           imgCtx.clearRect(0, 0, imgCanvas.width, imgCanvas.height);
           imgCtx.drawImage(img, 0, 0, imgCanvas.width, imgCanvas.height);
           analyzeSpectrum();
@@ -60,7 +72,6 @@
         spectrum.push({ wavelength, intensity });
       }
 
-      // Group and average absorbance by wavelength
       let absorbance = {};
       let counts = {};
 
@@ -74,57 +85,72 @@
         counts[p.wavelength]++;
       });
 
-      let labels = Object.keys(absorbance).map(Number).sort((a, b) => a - b);
-      let values = labels.map(w => absorbance[w] / counts[w]);
+      let rawLabels = Object.keys(absorbance).map(Number);
+      let rawValues = rawLabels.map(w => absorbance[w] / counts[w]);
 
+      // Fill gaps in wavelength range (190–800 nm)
+      const fullRange = Array.from({ length: 611 }, (_, i) => i + 190);
+      const absorbanceMap = Object.fromEntries(rawLabels.map((w, i) => [w, rawValues[i]]));
+      const labels = fullRange;
+      const values = fullRange.map(w => absorbanceMap[w] || 0);
+
+      // Find highest absorbance peak
       const peakIndex = values.indexOf(Math.max(...values));
       const peakWavelength = labels[peakIndex];
       const peakAbsorbance = values[peakIndex].toFixed(2);
 
-      document.getElementById("peakInfo").innerText = 
-        `Highest Peak: ${peakAbsorbance} at ${peakWavelength} nm`;
+      document.getElementById("peakInfo").innerText =
+        `Highest Absorbance: ${peakAbsorbance} at ${peakWavelength} nm`;
 
       if (chart) chart.destroy();
+
+      // Color gradient under curve (UV–VIS)
+      const gradient = chartCtx.createLinearGradient(0, 0, chartCtx.canvas.width, 0);
+      gradient.addColorStop(0.00, "purple");    // 190–380 UV
+      gradient.addColorStop(0.15, "violet");    // 380–450
+      gradient.addColorStop(0.30, "blue");      // 450–495
+      gradient.addColorStop(0.45, "green");     // 495–570
+      gradient.addColorStop(0.55, "yellow");    // 570–590
+      gradient.addColorStop(0.63, "orange");    // 590–620
+      gradient.addColorStop(0.75, "red");       // 620–750
+      gradient.addColorStop(1.00, "gray");      // 750–800+
 
       chart = new Chart(chartCtx, {
         type: 'line',
         data: {
-          labels,
+          labels: labels,
           datasets: [{
-            label: 'Absorbance Spectrum',
+            label: "Absorbance Spectrum",
             data: values,
-            borderColor: 'black',
+            borderColor: "#000",
             borderWidth: 2,
-            fill: {
-              target: 'origin',
-              above: (ctx) => {
-                const x = ctx.chart.data.labels[ctx.p0DataIndex];
-                if (x < 450) return 'rgba(148,0,211,0.3)'; // Violet
-                if (x < 495) return 'rgba(0,0,255,0.3)';   // Blue
-                if (x < 570) return 'rgba(0,255,0,0.3)';   // Green
-                if (x < 590) return 'rgba(255,255,0,0.3)'; // Yellow
-                if (x < 620) return 'rgba(255,165,0,0.3)'; // Orange
-                return 'rgba(255,0,0,0.3)';                // Red
-              }
-            },
-            tension: 0.2,
-            pointRadius: 1
+            fill: true,
+            backgroundColor: gradient,
+            tension: 0.4,
+            pointRadius: 0
           }]
         },
         options: {
           responsive: true,
+          maintainAspectRatio: false,
           plugins: {
             legend: { display: true },
             tooltip: { mode: 'index', intersect: false }
           },
           scales: {
             x: {
-              title: { display: true, text: 'Wavelength (nm)' },
-              min: 380,
-              max: 750
+              title: { display: true, text: "Wavelength (nm)" },
+              min: 190,
+              max: 800,
+              ticks: {
+                callback: function(value) {
+                  return value + ' nm';
+                }
+              }
             },
             y: {
-              title: { display: true, text: 'Absorbance' }
+              title: { display: true, text: "Absorbance" },
+              beginAtZero: true
             }
           }
         }
