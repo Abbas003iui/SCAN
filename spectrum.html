@@ -36,13 +36,13 @@
   </style>
 </head>
 <body>
-  <h1>Light Spectrum Analyzer</h1>
+  <h1>Light Spectrum Analyzer 🌈</h1>
 
   <div id="instructions">
     <h2>🧪 How to Calibrate & Analyze:</h2>
     <ol>
       <li><strong>Step 1:</strong> Upload a <strong>blank (calibration)</strong> image using the first button. This image should contain a light spectrum with no sample.</li>
-      <li><strong>Step 2:</strong> Upload your <strong>sample</strong> spectrum image using the second button. Absorbance will be calculated as log10(I₀/I).</li>
+      <li><strong>Step 2:</strong> Upload your <strong>sample</strong> spectrum image using the second button. Absorbance will be calculated as log₁₀(I₀/I).</li>
       <li>Ensure both images have the same alignment and resolution.</li>
     </ol>
   </div>
@@ -57,19 +57,6 @@
   <script>
     let blankSpectrum = null;
     let chart = null;
-
-    function getColor(wavelength) {
-      let r = 0, g = 0, b = 0;
-      if (wavelength >= 380 && wavelength <= 750) {
-        if (wavelength < 440) { r = -(wavelength - 440) / (440 - 380); b = 1; }
-        else if (wavelength < 490) { g = (wavelength - 440) / (490 - 440); b = 1; }
-        else if (wavelength < 510) { g = 1; b = -(wavelength - 510) / (510 - 490); }
-        else if (wavelength < 580) { r = (wavelength - 510) / (580 - 510); g = 1; }
-        else if (wavelength < 645) { r = 1; g = -(wavelength - 645) / (645 - 580); }
-        else { r = 1; }
-      }
-      return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, 0.5)`;
-    }
 
     function extractSpectrum(img) {
       const canvas = document.createElement('canvas');
@@ -98,7 +85,6 @@
         Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
       );
 
-      // Apply calibration if blank exists
       let absorbance = sampleSpectrum;
       if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
         absorbance = sampleSpectrum.map((I, i) => {
@@ -112,22 +98,30 @@
       const peakWavelength = labels[peakIndex];
       const peakValue = absorbance[peakIndex].toFixed(2);
 
-      // Split dataset into many small points to apply gradient color
-      const datasets = labels.map((label, i) => ({
-        label: `${label} nm`,
-        data: [{ x: label, y: absorbance[i] }],
-        borderColor: 'black',
-        backgroundColor: getColor(label),
-        pointRadius: 0,
-        fill: 'origin',
-        tension: 0.4,
-        showLine: true
-      }));
+      const dataPoints = labels.map((label, i) => ({ x: label, y: absorbance[i] }));
+
+      const ctx = document.getElementById('spectrumChart').getContext('2d');
+      const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
+      gradient.addColorStop(0.0, "#8B00FF"); // violet (380 nm)
+      gradient.addColorStop(0.15, "#0000FF"); // blue
+      gradient.addColorStop(0.33, "#00FFFF"); // cyan
+      gradient.addColorStop(0.5, "#00FF00"); // green
+      gradient.addColorStop(0.66, "#FFFF00"); // yellow
+      gradient.addColorStop(0.83, "#FF7F00"); // orange
+      gradient.addColorStop(1.0, "#FF0000"); // red (750 nm)
 
       const config = {
-        type: 'scatter',
+        type: 'line',
         data: {
-          datasets: datasets
+          datasets: [{
+            label: 'Absorbance',
+            data: dataPoints,
+            fill: true,
+            borderColor: 'black',
+            backgroundColor: gradient,
+            pointRadius: 0,
+            tension: 0.4
+          }]
         },
         options: {
           responsive: true,
@@ -144,29 +138,24 @@
             }
           },
           plugins: {
-            tooltip: {
-              callbacks: {
-                label: (ctx) => `Wavelength: ${ctx.raw.x} nm | Absorbance: ${ctx.raw.y.toFixed(2)}`
-              }
-            },
             title: {
               display: true,
               text: `Peak: ${peakWavelength} nm | Absorbance: ${peakValue}`
             },
+            tooltip: {
+              callbacks: {
+                label: ctx => `Wavelength: ${ctx.raw.x} nm | Absorbance: ${ctx.raw.y.toFixed(2)}`
+              }
+            },
             legend: {
               display: false
-            }
-          },
-          elements: {
-            line: {
-              borderWidth: 1
             }
           }
         }
       };
 
       if (chart) chart.destroy();
-      chart = new Chart(document.getElementById('spectrumChart').getContext('2d'), config);
+      chart = new Chart(ctx, config);
     }
 
     function handleImageUpload(event, isBlank) {
