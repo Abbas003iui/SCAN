@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>UV-Vis Spectroscopy</title>
+  <title>UV-Vis Spectrum Analysis</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
@@ -12,7 +12,7 @@
       padding: 20px;
     }
 
-    .chart-container {
+    #chartContainer, #transmittanceContainer {
       width: 100%;
       max-width: 900px;
       margin: 30px auto;
@@ -41,8 +41,8 @@
 </head>
 <body>
 
-  <h1>UV-Vis Spectroscopy</h1>
-  <p>Upload <strong>blank image</strong> and <strong>sample image</strong> to generate absorbance and transmittance plots.</p>
+  <h1>UV-Vis Spectrum Analysis</h1>
+  <p>Upload a <strong>blank image</strong> and a <strong>sample image</strong> to view Absorbance and Transmittance graphs.</p>
 
   <input type="file" accept="image/*" id="blankUpload">
   <input type="file" accept="image/*" id="sampleUpload">
@@ -52,12 +52,12 @@
     <img id="samplePreview" style="display:none;" />
   </div>
 
-  <div class="chart-container">
+  <div id="chartContainer">
     <h2>Absorbance Spectrum</h2>
     <canvas id="spectrumChart"></canvas>
   </div>
 
-  <div class="chart-container">
+  <div id="transmittanceContainer">
     <h2>Transmittance Spectrum</h2>
     <canvas id="transmittanceChart"></canvas>
   </div>
@@ -66,7 +66,7 @@
     const startWavelength = 380;
     const endWavelength = 750;
     let blankSpectrum = null;
-    let absorbanceChart = null;
+    let chart = null;
     let transmittanceChart = null;
 
     function extractSpectrum(img) {
@@ -98,61 +98,58 @@
       return "#FF0000"; // Red
     }
 
-    function plotGraphs(sampleSpectrum, width) {
+    function plotSpectrum(sampleSpectrum, width) {
       const labels = sampleSpectrum.map((_, i) =>
         Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
       );
 
-      let absorbance = sampleSpectrum.slice();
-      let transmittance = sampleSpectrum.slice();
-
+      let absorbance = sampleSpectrum;
       if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
         absorbance = sampleSpectrum.map((I, i) => {
           const I0 = blankSpectrum[i];
           return (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
         });
-
-        transmittance = sampleSpectrum.map((I, i) => {
-          const I0 = blankSpectrum[i];
-          return (I0 > 0) ? I / I0 : 0;
-        });
       }
 
       const maxAbs = Math.max(...absorbance);
-      const maxTrans = Math.max(...transmittance);
       absorbance = absorbance.map(a => maxAbs > 0 ? a / maxAbs : 0);
-      transmittance = transmittance.map(t => maxTrans > 0 ? t / maxTrans : 0);
 
-      const absorbanceData = labels.map((label, i) => ({ x: label, y: absorbance[i] }));
-      const transmittanceData = labels.map((label, i) => ({ x: label, y: transmittance[i] }));
+      const peakIndex = absorbance.indexOf(Math.max(...absorbance));
+      const peakWavelength = labels[peakIndex];
+      const peakValue = absorbance[peakIndex].toFixed(2);
 
-      const ctx1 = document.getElementById('spectrumChart').getContext('2d');
-      const ctx2 = document.getElementById('transmittanceChart').getContext('2d');
+      const dataPoints = labels.map((label, i) => ({
+        x: label,
+        y: absorbance[i]
+      }));
 
-      const gradient = ctx1.createLinearGradient(0, 0, ctx1.canvas.width, 0);
+      const ctx = document.getElementById('spectrumChart').getContext('2d');
+      if (chart) chart.destroy();
+
+      const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
       for (let i = 0; i <= 1; i += 0.05) {
         const w = startWavelength + i * (endWavelength - startWavelength);
         gradient.addColorStop(i, wavelengthToColor(w));
       }
 
-      if (absorbanceChart) absorbanceChart.destroy();
-      if (transmittanceChart) transmittanceChart.destroy();
-
-      absorbanceChart = new Chart(ctx1, {
+      chart = new Chart(ctx, {
         type: 'line',
         data: {
-          datasets: [{
-            label: 'Absorbance',
-            data: absorbanceData,
-            borderColor: 'black',
-            backgroundColor: gradient,
-            fill: 'origin',
-            pointRadius: 0,
-            tension: 0.3
-          }]
+          datasets: [
+            {
+              label: 'Absorbance',
+              data: dataPoints,
+              borderColor: 'black',
+              backgroundColor: gradient,
+              fill: 'origin',
+              pointRadius: 0,
+              tension: 0.3
+            }
+          ]
         },
         options: {
           responsive: true,
+          maintainAspectRatio: true,
           scales: {
             x: {
               type: 'linear',
@@ -167,26 +164,63 @@
             }
           },
           plugins: {
-            legend: { display: false }
+            title: {
+              display: true,
+              text: `Peak Absorbance: ${peakValue} at ${peakWavelength} nm`
+            },
+            legend: {
+              display: false
+            }
           }
         }
       });
+    }
 
-      transmittanceChart = new Chart(ctx2, {
+    function plotTransmittance(sampleSpectrum, width) {
+      const labels = sampleSpectrum.map((_, i) =>
+        Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
+      );
+
+      let transmittance = sampleSpectrum;
+      if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
+        transmittance = sampleSpectrum.map((I, i) => {
+          const I0 = blankSpectrum[i];
+          return (I0 > 0) ? (I / I0) * 100 : 0;
+        });
+      }
+
+      const dataPoints = labels.map((label, i) => ({
+        x: label,
+        y: transmittance[i]
+      }));
+
+      const ctx = document.getElementById('transmittanceChart').getContext('2d');
+      if (transmittanceChart) transmittanceChart.destroy();
+
+      const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
+      for (let i = 0; i <= 1; i += 0.05) {
+        const w = startWavelength + i * (endWavelength - startWavelength);
+        gradient.addColorStop(i, wavelengthToColor(w));
+      }
+
+      transmittanceChart = new Chart(ctx, {
         type: 'line',
         data: {
-          datasets: [{
-            label: 'Transmittance',
-            data: transmittanceData,
-            borderColor: 'blue',
-            backgroundColor: 'rgba(0, 123, 255, 0.3)',
-            fill: 'origin',
-            pointRadius: 0,
-            tension: 0.3
-          }]
+          datasets: [
+            {
+              label: 'Transmittance (%)',
+              data: dataPoints,
+              borderColor: 'blue',
+              backgroundColor: gradient,
+              fill: 'origin',
+              pointRadius: 0,
+              tension: 0.3
+            }
+          ]
         },
         options: {
           responsive: true,
+          maintainAspectRatio: true,
           scales: {
             x: {
               type: 'linear',
@@ -195,13 +229,19 @@
               max: endWavelength
             },
             y: {
-              title: { display: true, text: 'Normalized Transmittance' },
+              title: { display: true, text: 'Transmittance (%)' },
               min: 0,
-              max: 1
+              max: 100
             }
           },
           plugins: {
-            legend: { display: false }
+            title: {
+              display: true,
+              text: 'Transmittance Spectrum (%T)'
+            },
+            legend: {
+              display: false
+            }
           }
         }
       });
@@ -223,7 +263,8 @@
           } else {
             document.getElementById('samplePreview').src = img.src;
             document.getElementById('samplePreview').style.display = 'inline';
-            plotGraphs(spectrum, img.width);
+            plotSpectrum(spectrum, img.width);
+            plotTransmittance(spectrum, img.width);
           }
         };
         img.src = evt.target.result;
@@ -234,5 +275,6 @@
     document.getElementById('blankUpload').addEventListener('change', e => handleImageUpload(e, true));
     document.getElementById('sampleUpload').addEventListener('change', e => handleImageUpload(e, false));
   </script>
+
 </body>
 </html>
