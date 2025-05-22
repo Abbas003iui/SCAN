@@ -117,6 +117,11 @@
       return spectrum;
     }
 
+    function normalize(spectrum) {
+      const maxVal = Math.max(...spectrum);
+      return spectrum.map(v => v / maxVal);
+    }
+
     function wavelengthToColor(wavelength) {
       if (wavelength < 440) return "#8B00FF"; // Violet
       if (wavelength < 490) return "#0000FF"; // Blue
@@ -132,18 +137,19 @@
         Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
       );
 
-      // Normalize both blank and sample to max of blank
-      if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
-        const maxIntensity = Math.max(...blankSpectrum);
-        const normalizedBlank = blankSpectrum.map(i => i / maxIntensity);
-        const normalizedSample = sampleSpectrum.map(i => i / maxIntensity);
+      let absorbance = sampleSpectrum;
 
-        var absorbance = normalizedSample.map((I, i) => {
+      if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
+        const normalizedBlank = normalize(blankSpectrum);
+        const normalizedSample = normalize(sampleSpectrum);
+
+        absorbance = normalizedSample.map((I, i) => {
           const I0 = normalizedBlank[i];
-          return (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
+          const ratio = (I > 0 && I0 > 0) ? I0 / I : 1;
+          let A = Math.log10(ratio);
+          A = Math.max(0, Math.min(1, A)); // Clamp between 0 and 1
+          return A;
         });
-      } else {
-        var absorbance = sampleSpectrum;
       }
 
       const peakIndex = absorbance.indexOf(Math.max(...absorbance));
