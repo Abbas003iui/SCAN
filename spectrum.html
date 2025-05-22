@@ -132,12 +132,18 @@
         Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
       );
 
-      let absorbance = sampleSpectrum;
+      // Normalize both blank and sample to max of blank
       if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
-        absorbance = sampleSpectrum.map((I, i) => {
-          const I0 = blankSpectrum[i];
+        const maxIntensity = Math.max(...blankSpectrum);
+        const normalizedBlank = blankSpectrum.map(i => i / maxIntensity);
+        const normalizedSample = sampleSpectrum.map(i => i / maxIntensity);
+
+        var absorbance = normalizedSample.map((I, i) => {
+          const I0 = normalizedBlank[i];
           return (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
         });
+      } else {
+        var absorbance = sampleSpectrum;
       }
 
       const peakIndex = absorbance.indexOf(Math.max(...absorbance));
@@ -188,7 +194,8 @@
             },
             y: {
               title: { display: true, text: 'Absorbance' },
-              beginAtZero: true
+              min: 0,
+              max: 1
             }
           },
           plugins: {
