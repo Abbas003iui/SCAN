@@ -1,77 +1,240 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Test Absorbance Chart</title>
+  <meta charset="UTF-8" />
+  <title>UV-Vis Absorbance Spectrum Analyzer</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #f5f5f5;
+      margin: 20px;
+    }
+
     canvas {
+      max-width: 900px;
+      height: auto !important;
+    }
+
+    #chartContainer {
+      width: 100%;
+      max-width: 900px;
+      margin: 20px auto;
+      aspect-ratio: 2 / 1;
+      background: white;
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+
+    .upload {
+      margin: 10px;
+    }
+
+    .preview-container {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      margin: 20px 0;
+    }
+
+    .preview-container img {
+      max-height: 150px;
+      border-radius: 8px;
+      border: 1px solid #aaa;
+    }
+
+    #instructions {
       max-width: 800px;
       margin: auto;
-      display: block;
+      text-align: left;
+      padding: 20px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
     }
   </style>
 </head>
 <body>
-  <h2>Simulated Absorbance Spectrum</h2>
-  <canvas id="absorbanceChart"></canvas>
+
+  <h1>🌈 UV-Vis Absorbance Spectrum Analyzer</h1>
+
+  <div id="instructions">
+    <h2>📘 Instructions:</h2>
+    <ol>
+      <li>Upload a <strong>blank image</strong> (spectrum without sample).</li>
+      <li>Upload the <strong>sample image</strong> (spectrum with sample).</li>
+      <li>The graph will display the <strong>absorbance spectrum</strong> with a color fill based on wavelength (380–750 nm).</li>
+    </ol>
+  </div>
+
+  <input type="file" accept="image/*" id="blankUpload" class="upload" />
+  <label for="blankUpload"><strong>Upload Blank Image</strong></label><br>
+
+  <input type="file" accept="image/*" id="sampleUpload" class="upload" />
+  <label for="sampleUpload"><strong>Upload Sample Image</strong></label>
+
+  <div class="preview-container">
+    <div>
+      <p><strong>Blank Image</strong></p>
+      <img id="blankPreview" style="display:none;" />
+    </div>
+    <div>
+      <p><strong>Sample Image</strong></p>
+      <img id="samplePreview" style="display:none;" />
+    </div>
+  </div>
+
+  <div id="chartContainer">
+    <canvas id="spectrumChart"></canvas>
+  </div>
 
   <script>
-    // Simulated wavelength (x-axis)
-    const wavelengths = [];
-    for (let i = 380; i <= 750; i += 5) {
-      wavelengths.push(i);
+    const startWavelength = 380;
+    const endWavelength = 750;
+    let blankSpectrum = null;
+    let chart = null;
+
+    function extractSpectrum(img) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      const spectrum = [];
+
+      for (let x = 0; x < img.width; x++) {
+        let sum = 0;
+        for (let y = 0; y < img.height; y++) {
+          const pixel = ctx.getImageData(x, y, 1, 1).data;
+          sum += (pixel[0] + pixel[1] + pixel[2]) / 3;
+        }
+        spectrum.push(sum / img.height);
+      }
+
+      return spectrum;
     }
 
-    // Simulated blank and sample intensities
-    const blank = wavelengths.map(() => 200); // constant high intensity
-    const sample = wavelengths.map((w) => {
-      return 200 - 80 * Math.exp(-Math.pow((w - 500)/50, 2)); // Gaussian dip
-    });
+    function wavelengthToColor(wavelength) {
+      if (wavelength < 440) return "#8B00FF"; // Violet
+      if (wavelength < 490) return "#0000FF"; // Blue
+      if (wavelength < 510) return "#00FFFF"; // Cyan
+      if (wavelength < 580) return "#00FF00"; // Green
+      if (wavelength < 600) return "#FFFF00"; // Yellow
+      if (wavelength < 645) return "#FF7F00"; // Orange
+      return "#FF0000"; // Red
+    }
 
-    // Compute absorbance = log10(I0 / I)
-    const absorbance = blank.map((I0, i) => {
-      const I = sample[i];
-      const A = Math.log10(I0 / I);
-      return Math.min(Math.max(A, 0), 1); // clamp between 0–1
-    });
+    function plotSpectrum(sampleSpectrum, width) {
+      const labels = sampleSpectrum.map((_, i) =>
+        Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
+      );
 
-    // Draw chart
-    const ctx = document.getElementById('absorbanceChart').getContext('2d');
-    new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: wavelengths,
-        datasets: [{
-          label: 'Absorbance',
-          data: absorbance,
-          borderColor: 'blue',
-          backgroundColor: 'rgba(0, 0, 255, 0.2)',
-          fill: true,
-          tension: 0.4,         // Smooth trendline
-          pointRadius: 2,
-          borderWidth: 2
-        }]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          x: {
-            title: { display: true, text: 'Wavelength (nm)' }
-          },
-          y: {
-            min: 0,
-            max: 1,
-            title: { display: true, text: 'Absorbance' }
-          }
+      let absorbance = sampleSpectrum;
+      if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
+        absorbance = sampleSpectrum.map((I, i) => {
+          const I0 = blankSpectrum[i];
+          return (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
+        });
+      }
+
+      const peakIndex = absorbance.indexOf(Math.max(...absorbance));
+      const peakWavelength = labels[peakIndex];
+      const peakValue = absorbance[peakIndex].toFixed(2);
+
+      const dataPoints = labels.map((label, i) => ({
+        x: label,
+        y: absorbance[i]
+      }));
+
+      const ctx = document.getElementById('spectrumChart').getContext('2d');
+      if (chart) chart.destroy();
+
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: 'Absorbance',
+            data: dataPoints,
+            fill: true,
+            borderColor: 'black',
+            pointRadius: 0,
+            tension: 0.3,
+            backgroundColor: function(ctx) {
+              const chartArea = ctx.chart.chartArea;
+              if (!chartArea) return null;
+
+              const gradient = ctx.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+              for (let i = 0; i <= 1; i += 0.1) {
+                const w = startWavelength + i * (endWavelength - startWavelength);
+                gradient.addColorStop(i, wavelengthToColor(w));
+              }
+              return gradient;
+            }
+          }]
         },
-        plugins: {
-          title: {
-            display: true,
-            text: 'Simulated Absorbance Spectrum with Trendline'
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          aspectRatio: 2,
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Wavelength (nm)' },
+              min: startWavelength,
+              max: endWavelength
+            },
+            y: {
+              title: { display: true, text: 'Absorbance' },
+              min: 1
+            }
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: `Peak Absorbance: ${peakValue} at ${peakWavelength} nm`
+            },
+            tooltip: {
+              callbacks: {
+                label: ctx => `λ: ${ctx.raw.x} nm | A: ${ctx.raw.y.toFixed(2)}`
+              }
+            },
+            legend: { display: false }
           }
         }
-      }
-    });
+      });
+    }
+
+    function handleImageUpload(event, isBlank) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const img = new Image();
+        img.onload = function() {
+          const spectrum = extractSpectrum(img);
+          if (isBlank) {
+            blankSpectrum = spectrum;
+            document.getElementById('blankPreview').src = img.src;
+            document.getElementById('blankPreview').style.display = 'inline';
+            alert("✅ Blank (calibration) image loaded.");
+          } else {
+            document.getElementById('samplePreview').src = img.src;
+            document.getElementById('samplePreview').style.display = 'inline';
+            plotSpectrum(spectrum, img.width);
+          }
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    document.getElementById('blankUpload').addEventListener('change', e => handleImageUpload(e, true));
+    document.getElementById('sampleUpload').addEventListener('change', e => handleImageUpload(e, false));
   </script>
+
 </body>
 </html>
