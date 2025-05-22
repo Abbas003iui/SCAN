@@ -101,16 +101,10 @@
       const dataPoints = labels.map((label, i) => ({ x: label, y: absorbance[i] }));
 
       const ctx = document.getElementById('spectrumChart').getContext('2d');
-      const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
-      gradient.addColorStop(0.0, "#8B00FF"); // violet (380 nm)
-      gradient.addColorStop(0.15, "#0000FF"); // blue
-      gradient.addColorStop(0.33, "#00FFFF"); // cyan
-      gradient.addColorStop(0.5, "#00FF00"); // green
-      gradient.addColorStop(0.66, "#FFFF00"); // yellow
-      gradient.addColorStop(0.83, "#FF7F00"); // orange
-      gradient.addColorStop(1.0, "#FF0000"); // red (750 nm)
 
-      const config = {
+      if (chart) chart.destroy();
+
+      chart = new Chart(ctx, {
         type: 'line',
         data: {
           datasets: [{
@@ -118,13 +112,13 @@
             data: dataPoints,
             fill: true,
             borderColor: 'black',
-            backgroundColor: gradient,
             pointRadius: 0,
-            tension: 0.4
+            tension: 0.3
           }]
         },
         options: {
           responsive: true,
+          maintainAspectRatio: false,
           scales: {
             x: {
               type: 'linear',
@@ -147,15 +141,27 @@
                 label: ctx => `Wavelength: ${ctx.raw.x} nm | Absorbance: ${ctx.raw.y.toFixed(2)}`
               }
             },
-            legend: {
-              display: false
-            }
+            legend: { display: false }
           }
-        }
-      };
+        },
+        plugins: [{
+          id: 'custom-gradient',
+          beforeDraw: (chartInstance) => {
+            const ctx = chartInstance.ctx;
+            const chartArea = chartInstance.chartArea;
+            const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+            gradient.addColorStop(0.0, "#8B00FF");  // Violet
+            gradient.addColorStop(0.15, "#0000FF"); // Blue
+            gradient.addColorStop(0.33, "#00FFFF"); // Cyan
+            gradient.addColorStop(0.5, "#00FF00");  // Green
+            gradient.addColorStop(0.66, "#FFFF00"); // Yellow
+            gradient.addColorStop(0.83, "#FF7F00"); // Orange
+            gradient.addColorStop(1.0, "#FF0000");  // Red
 
-      if (chart) chart.destroy();
-      chart = new Chart(ctx, config);
+            chartInstance.data.datasets[0].backgroundColor = gradient;
+          }
+        }]
+      });
     }
 
     function handleImageUpload(event, isBlank) {
