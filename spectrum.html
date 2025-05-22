@@ -27,7 +27,7 @@
       height: auto !important;
     }
 
-    input[type="file"] {
+    input[type="file"], input[type="number"] {
       margin: 10px;
     }
 
@@ -42,10 +42,19 @@
 <body>
 
   <h1>UV-Vis Absorbance Spectrum</h1>
-  <p>Upload <strong>blank image</strong> and <strong>sample image</strong> to generate normalized absorbance plot.</p>
+  <p>Upload <strong>blank image</strong> and <strong>sample image</strong> to generate spectrum plot.</p>
 
   <input type="file" accept="image/*" id="blankUpload">
   <input type="file" accept="image/*" id="sampleUpload">
+  <br>
+
+  <label>Pixel Offset: <input type="number" id="offsetInput" value="0" min="-100" max="100" /></label>
+  <label>
+    <input type="radio" name="mode" value="absorbance" checked> Absorbance
+  </label>
+  <label>
+    <input type="radio" name="mode" value="transmittance"> Transmittance
+  </label>
 
   <div class="preview-container">
     <img id="blankPreview" style="display:none;" />
@@ -96,31 +105,51 @@
         Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
       );
 
-      let absorbance = sampleSpectrum;
-      if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
-        absorbance = sampleSpectrum.map((I, i) => {
-          const I0 = blankSpectrum[i];
-          return (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
-        });
-      }
+      const offset = parseInt(document.getElementById('offsetInput').value) || 0;
+      const mode = document.querySelector('input[name="mode"]:checked').value;
 
-      // Normalize absorbance 0–1
+      // Normalize blank and sample spectra
+      const maxBlank = Math.max(...blankSpectrum);
+      const maxSample = Math.max(...sampleSpectrum);
+      const normBlank = blankSpectrum.map(v => v / maxBlank);
+      const normSample = sampleSpectrum.map(v => v / maxSample);
+
+      // Apply offset to sample
+      const shiftedSample = normSample.map((_, i) =>
+        normSample[i + offset] !== undefined ? normSample[i + offset] : normSample[i]
+      );
+
+      // Calculate absorbance or transmittance
+      const absorbance = shiftedSample.map((I, i) => {
+        const I0 = normBlank[i];
+        const MIN = 0.01;
+
+        const safeI = Math.max(I, MIN);
+        const safeI0 = Math.max(I0, MIN);
+
+        if (mode === "absorbance") {
+          return Math.log10(safeI0 / safeI);
+        } else {
+          return safeI / safeI0;
+        }
+      });
+
+      // Normalize absorbance for plotting
       const maxAbs = Math.max(...absorbance);
-      absorbance = absorbance.map(a => maxAbs > 0 ? a / maxAbs : 0);
+      const normalizedAbs = absorbance.map(a => (maxAbs > 0 ? a / maxAbs : 0));
 
-      const peakIndex = absorbance.indexOf(Math.max(...absorbance));
+      const peakIndex = normalizedAbs.indexOf(Math.max(...normalizedAbs));
       const peakWavelength = labels[peakIndex];
       const peakValue = absorbance[peakIndex].toFixed(2);
 
       const dataPoints = labels.map((label, i) => ({
         x: label,
-        y: absorbance[i]
+        y: normalizedAbs[i]
       }));
 
       const ctx = document.getElementById('spectrumChart').getContext('2d');
       if (chart) chart.destroy();
 
-      // Create custom gradient for under the line
       const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
       for (let i = 0; i <= 1; i += 0.05) {
         const w = startWavelength + i * (endWavelength - startWavelength);
@@ -132,11 +161,11 @@
         data: {
           datasets: [
             {
-              label: 'Absorbance',
+              label: 'Spectrum',
               data: dataPoints,
               borderColor: 'black',
               backgroundColor: gradient,
-              fill: 'origin', // fill under the line only
+              fill: 'origin',
               pointRadius: 0,
               tension: 0.3
             }
@@ -153,7 +182,7 @@
               max: endWavelength
             },
             y: {
-              title: { display: true, text: 'Normalized Absorbance' },
+              title: { display: true, text: 'Normalized ' + (mode === 'absorbance' ? 'Absorbance' : 'Transmittance') },
               min: 0,
               max: 1
             }
@@ -161,11 +190,9 @@
           plugins: {
             title: {
               display: true,
-              text: `Peak Absorbance: ${peakValue} at ${peakWavelength} nm`
+              text: `${mode === 'absorbance' ? 'Peak Absorbance' : 'Peak Transmittance'}: ${peakValue} at ${peakWavelength} nm`
             },
-            legend: {
-              display: false
-            }
+            legend: { display: false }
           }
         }
       });
@@ -187,7 +214,7 @@
           } else {
             document.getElementById('samplePreview').src = img.src;
             document.getElementById('samplePreview').style.display = 'inline';
-            plotSpectrum(spectrum, img.width);
+            if (blankSpectrum) plotSpectrum(spectrum, img.width);
           }
         };
         img.src = evt.target.result;
@@ -197,6 +224,32 @@
 
     document.getElementById('blankUpload').addEventListener('change', e => handleImageUpload(e, true));
     document.getElementById('sampleUpload').addEventListener('change', e => handleImageUpload(e, false));
+
+    document.getElementById('offsetInput').addEventListener('input', () => {
+      if (blankSpectrum && document.getElementById('samplePreview').src) {
+        const img = document.getElementById('samplePreview');
+        const tmpImg = new Image();
+        tmpImg.src = img.src;
+        tmpImg.onload = () => {
+          const spectrum = extractSpectrum(tmpImg);
+          plotSpectrum(spectrum, tmpImg.width);
+        };
+      }
+    });
+
+    document.querySelectorAll('input[name="mode"]').forEach(radio =>
+      radio.addEventListener('change', () => {
+        if (blankSpectrum && document.getElementById('samplePreview').src) {
+          const img = document.getElementById('samplePreview');
+          const tmpImg = new Image();
+          tmpImg.src = img.src;
+          tmpImg.onload = () => {
+            const spectrum = extractSpectrum(tmpImg);
+            plotSpectrum(spectrum, tmpImg.width);
+          };
+        }
+      })
+    );
   </script>
 
 </body>
