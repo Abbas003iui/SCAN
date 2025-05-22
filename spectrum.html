@@ -128,90 +128,90 @@
     }
 
     function plotSpectrum(sampleSpectrum, width) {
-  const labels = sampleSpectrum.map((_, i) =>
-    Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
-  );
+      const labels = sampleSpectrum.map((_, i) =>
+        Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
+      );
 
-  let absorbance = sampleSpectrum;
-  if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
-    absorbance = sampleSpectrum.map((I, i) => {
-      const I0 = blankSpectrum[i];
-      return (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
-    });
+      let absorbance = sampleSpectrum;
+      if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
+        absorbance = sampleSpectrum.map((I, i) => {
+          const I0 = blankSpectrum[i];
+          return (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
+        });
 
-    // ✅ Normalize absorbance to [0, 1]
-    const maxAbs = Math.max(...absorbance);
-    const minAbs = Math.min(...absorbance);
-    absorbance = absorbance.map(a => (a - minAbs) / (maxAbs - minAbs));
-  }
-
-  const peakIndex = absorbance.indexOf(Math.max(...absorbance));
-  const peakWavelength = labels[peakIndex];
-  const peakValue = absorbance[peakIndex].toFixed(2);
-
-  const dataPoints = labels.map((label, i) => ({
-    x: label,
-    y: absorbance[i]
-  }));
-
-  const ctx = document.getElementById('spectrumChart').getContext('2d');
-  if (chart) chart.destroy();
-
-  chart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      datasets: [{
-        label: 'Absorbance',
-        data: dataPoints,
-        fill: true,
-        borderColor: 'black',
-        pointRadius: 0,
-        tension: 0.3,
-        backgroundColor: function(ctx) {
-          const chartArea = ctx.chart.chartArea;
-          if (!chartArea) return null;
-
-          const gradient = ctx.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-          for (let i = 0; i <= 1; i += 0.1) {
-            const w = startWavelength + i * (endWavelength - startWavelength);
-            gradient.addColorStop(i, wavelengthToColor(w));
-          }
-          return gradient;
-        }
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: true,
-      aspectRatio: 2,
-      scales: {
-        x: {
-          type: 'linear',
-          title: { display: true, text: 'Wavelength (nm)' },
-          min: startWavelength,
-          max: endWavelength
-        },
-        y: {
-          title: { display: true, text: 'Normalized Absorbance' },
-          min: 0,
-          max: 1
-        }
-      },
-      plugins: {
-        title: {
-          display: true,
-          text: `Peak Absorbance: ${peakValue} at ${peakWavelength} nm`
-        },
-        tooltip: {
-          callbacks: {
-            label: ctx => `λ: ${ctx.raw.x} nm | A: ${ctx.raw.y.toFixed(2)}`
-          }
-        },
-        legend: { display: false }
+        // ✅ Normalize absorbance to [0, 1]
+        const maxAbs = Math.max(...absorbance);
+        const minAbs = Math.min(...absorbance);
+        absorbance = absorbance.map(a => (a - minAbs) / (maxAbs - minAbs));
       }
+
+      const peakIndex = absorbance.indexOf(Math.max(...absorbance));
+      const peakWavelength = labels[peakIndex];
+      const peakValue = absorbance[peakIndex].toFixed(2);
+
+      const dataPoints = labels.map((label, i) => ({
+        x: label,
+        y: absorbance[i]
+      }));
+
+      const ctx = document.getElementById('spectrumChart').getContext('2d');
+      if (chart) chart.destroy();
+
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: 'Absorbance',
+            data: dataPoints,
+            fill: true,
+            borderColor: 'black',
+            pointRadius: 0,
+            tension: 0.3,
+            backgroundColor: function(ctx) {
+              const chartArea = ctx.chart.chartArea;
+              if (!chartArea) return null;
+
+              const gradient = ctx.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+              for (let i = 0; i <= 1; i += 0.1) {
+                const w = startWavelength + i * (endWavelength - startWavelength);
+                gradient.addColorStop(i, wavelengthToColor(w));
+              }
+              return gradient;
+            }
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          aspectRatio: 2,
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Wavelength (nm)' },
+              min: startWavelength,
+              max: endWavelength
+            },
+            y: {
+              title: { display: true, text: 'Normalized Absorbance' },
+              min: 0,
+              max: 1
+            }
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: `Peak Absorbance at ${peakWavelength} nm`
+            },
+            tooltip: {
+              callbacks: {
+                label: ctx => `λ: ${ctx.raw.x} nm | A: ${ctx.raw.y.toFixed(2)}`
+              }
+            },
+            legend: { display: false }
+          }
+        }
+      });
     }
-  });
-}
 
     function handleImageUpload(event, isBlank) {
       const file = event.target.files[0];
