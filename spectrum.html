@@ -2,36 +2,53 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Light Spectrum Analyzer with Calibration</title>
+  <title>Light Spectrum Analyzer (UV-Vis)</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
-      text-align: center;
       background: #f0f0f0;
+      text-align: center;
+      padding: 20px;
+    }
+    h1 {
+      color: #222;
     }
     canvas {
-      max-width: 90%;
-      margin: 20px auto;
+      display: block;
+      margin: 0 auto;
     }
     .upload {
-      margin: 10px;
+      margin: 10px 0;
     }
     #instructions {
       background: #ffffff;
-      padding: 15px;
+      padding: 20px;
+      margin: 20px auto;
       border-radius: 10px;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
-      margin: 20px auto;
-      max-width: 600px;
+      max-width: 700px;
       text-align: left;
     }
-    h2 {
-      color: #333;
+    #chartContainer {
+      width: 90%;
+      max-width: 900px;
+      height: 450px;
+      margin: auto;
+      position: relative;
+    }
+    .image-preview {
+      display: inline-block;
+      margin: 10px;
+      max-width: 300px;
+    }
+    .image-preview img {
+      width: 100%;
+      border: 2px solid #ccc;
+      border-radius: 10px;
     }
     label {
-      display: inline-block;
-      margin-bottom: 5px;
+      font-weight: bold;
     }
   </style>
 </head>
@@ -39,24 +56,36 @@
   <h1>Light Spectrum Analyzer 🌈</h1>
 
   <div id="instructions">
-    <h2>🧪 How to Calibrate & Analyze:</h2>
+    <h2>🧪 How to Use:</h2>
     <ol>
-      <li><strong>Step 1:</strong> Upload a <strong>blank (calibration)</strong> image using the first button. This image should contain a light spectrum with no sample.</li>
-      <li><strong>Step 2:</strong> Upload your <strong>sample</strong> spectrum image using the second button. Absorbance will be calculated as log₁₀(I₀/I).</li>
-      <li>Ensure both images have the same alignment and resolution.</li>
+      <li><strong>Step 1:</strong> Upload the <strong>blank (calibration)</strong> image containing the light spectrum with no sample.</li>
+      <li><strong>Step 2:</strong> Upload the <strong>sample</strong> image containing the spectrum after light passes through the sample.</li>
+      <li><strong>Ensure both images are aligned and have the same resolution.</strong></li>
+      <li>The system calculates <strong>absorbance (A = log₁₀(I₀/I))</strong> from UV (200nm) to visible (750nm).</li>
+      <li>The spectrum is displayed with color-coded regions under the curve based on wavelength.</li>
     </ol>
   </div>
 
-  <input type="file" accept="image/*" id="blankUpload" class="upload" />
-  <label for="blankUpload"><strong>Upload Calibration (Blank)</strong></label><br>
-  <input type="file" accept="image/*" id="sampleUpload" class="upload" />
-  <label for="sampleUpload"><strong>Upload Sample Image</strong></label><br>
+  <div>
+    <input type="file" accept="image/*" id="blankUpload" class="upload" />
+    <label for="blankUpload">Upload Calibration (Blank)</label><br>
+    <div class="image-preview" id="blankPreview"></div>
 
-  <canvas id="spectrumChart" width="800" height="400"></canvas>
+    <input type="file" accept="image/*" id="sampleUpload" class="upload" />
+    <label for="sampleUpload">Upload Sample Image</label><br>
+    <div class="image-preview" id="samplePreview"></div>
+  </div>
+
+  <div id="chartContainer">
+    <canvas id="spectrumChart"></canvas>
+  </div>
 
   <script>
     let blankSpectrum = null;
     let chart = null;
+
+    const startWavelength = 200; // nm
+    const endWavelength = 750;   // nm
 
     function extractSpectrum(img) {
       const canvas = document.createElement('canvas');
@@ -64,8 +93,8 @@
       canvas.width = img.width;
       canvas.height = img.height;
       ctx.drawImage(img, 0, 0);
-      const spectrum = [];
 
+      const spectrum = [];
       for (let x = 0; x < img.width; x++) {
         let sum = 0;
         for (let y = 0; y < img.height; y++) {
@@ -79,20 +108,19 @@
     }
 
     function plotSpectrum(sampleSpectrum, width) {
-      const startWavelength = 380;
-      const endWavelength = 750;
+      if (!blankSpectrum || blankSpectrum.length !== sampleSpectrum.length) {
+        alert("Please ensure calibration (blank) image is uploaded and matches the sample image dimensions.");
+        return;
+      }
+
+      const absorbance = sampleSpectrum.map((I, i) => {
+        const I0 = blankSpectrum[i];
+        return (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
+      });
+
       const labels = sampleSpectrum.map((_, i) =>
         Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
       );
-
-      let absorbance = sampleSpectrum;
-      if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
-        absorbance = sampleSpectrum.map((I, i) => {
-          const I0 = blankSpectrum[i];
-          if (I > 0 && I0 > 0) return Math.log10(I0 / I);
-          return 0;
-        });
-      }
 
       const peakIndex = absorbance.indexOf(Math.max(...absorbance));
       const peakWavelength = labels[peakIndex];
@@ -101,7 +129,6 @@
       const dataPoints = labels.map((label, i) => ({ x: label, y: absorbance[i] }));
 
       const ctx = document.getElementById('spectrumChart').getContext('2d');
-
       if (chart) chart.destroy();
 
       chart = new Chart(ctx, {
@@ -118,13 +145,13 @@
         },
         options: {
           responsive: true,
-          maintainAspectRatio: false,
+          maintainAspectRatio: true,
           scales: {
             x: {
               type: 'linear',
               title: { display: true, text: 'Wavelength (nm)' },
-              min: 380,
-              max: 750
+              min: startWavelength,
+              max: endWavelength
             },
             y: {
               title: { display: true, text: 'Absorbance' },
@@ -134,30 +161,29 @@
           plugins: {
             title: {
               display: true,
-              text: `Peak: ${peakWavelength} nm | Absorbance: ${peakValue}`
+              text: `Peak Absorbance: ${peakValue} at ${peakWavelength} nm`
             },
             tooltip: {
               callbacks: {
-                label: ctx => `Wavelength: ${ctx.raw.x} nm | Absorbance: ${ctx.raw.y.toFixed(2)}`
+                label: ctx => `λ: ${ctx.raw.x} nm | A: ${ctx.raw.y.toFixed(2)}`
               }
             },
             legend: { display: false }
           }
         },
         plugins: [{
-          id: 'custom-gradient',
+          id: 'colored-background',
           beforeDraw: (chartInstance) => {
             const ctx = chartInstance.ctx;
             const chartArea = chartInstance.chartArea;
             const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-            gradient.addColorStop(0.0, "#8B00FF");  // Violet
-            gradient.addColorStop(0.15, "#0000FF"); // Blue
-            gradient.addColorStop(0.33, "#00FFFF"); // Cyan
-            gradient.addColorStop(0.5, "#00FF00");  // Green
-            gradient.addColorStop(0.66, "#FFFF00"); // Yellow
-            gradient.addColorStop(0.83, "#FF7F00"); // Orange
-            gradient.addColorStop(1.0, "#FF0000");  // Red
-
+            gradient.addColorStop(0.0, "#9400D3");  // Violet
+            gradient.addColorStop(0.1, "#0000FF"); // Blue
+            gradient.addColorStop(0.3, "#00FFFF"); // Cyan
+            gradient.addColorStop(0.5, "#00FF00"); // Green
+            gradient.addColorStop(0.7, "#FFFF00"); // Yellow
+            gradient.addColorStop(0.9, "#FFA500"); // Orange
+            gradient.addColorStop(1.0, "#FF0000"); // Red
             chartInstance.data.datasets[0].backgroundColor = gradient;
           }
         }]
@@ -175,8 +201,10 @@
           const spectrum = extractSpectrum(img);
           if (isBlank) {
             blankSpectrum = spectrum;
-            alert("✅ Calibration (blank) image loaded. Now upload your sample image.");
+            document.getElementById('blankPreview').innerHTML = `<img src="${img.src}" alt="Blank Image Preview">`;
+            alert("✅ Blank calibration image loaded. Now upload your sample image.");
           } else {
+            document.getElementById('samplePreview').innerHTML = `<img src="${img.src}" alt="Sample Image Preview">`;
             plotSpectrum(spectrum, img.width);
           }
         };
