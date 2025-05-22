@@ -18,7 +18,7 @@
       background-color: white;
     }
     #chartCanvas {
-      height: 300px !important; /* limit vertical stretching */
+      height: 300px !important;
     }
     input[type="file"] {
       margin-top: 15px;
@@ -91,30 +91,35 @@
       let rawLabels = Object.keys(absorbance).map(Number);
       let rawValues = rawLabels.map(w => absorbance[w] / counts[w]);
 
-      // Fill range 190–800 nm
       const fullRange = Array.from({ length: 611 }, (_, i) => i + 190);
       const absorbanceMap = Object.fromEntries(rawLabels.map((w, i) => [w, rawValues[i]]));
       const labels = fullRange;
       const values = fullRange.map(w => absorbanceMap[w] || 0);
 
-      // Find peak
-      const peakIndex = values.indexOf(Math.max(...values));
+      // Normalize absorbance to 0–1
+      const maxAbs = Math.max(...values);
+      const normalizedValues = values.map(v => v / maxAbs);
+
+      const peakIndex = normalizedValues.indexOf(Math.max(...normalizedValues));
       const peakWavelength = labels[peakIndex];
-      const peakAbsorbance = values[peakIndex].toFixed(2);
+      const peakAbsorbance = normalizedValues[peakIndex].toFixed(2);
       document.getElementById("peakInfo").innerText =
         `Highest Absorbance: ${peakAbsorbance} at ${peakWavelength} nm`;
 
       if (chart) chart.destroy();
 
-      // Gradient fill
+      // Fix: Color gradient aligned to real wavelengths (190 to 800 nm)
       const gradient = chartCtx.createLinearGradient(0, 0, chartCtx.canvas.width, 0);
-      gradient.addColorStop(0.00, "#8b00ff");  // UV → violet
-      gradient.addColorStop(0.15, "#0000ff");  // blue
-      gradient.addColorStop(0.30, "#00ff00");  // green
-      gradient.addColorStop(0.45, "#ffff00");  // yellow
-      gradient.addColorStop(0.60, "#ffa500");  // orange
-      gradient.addColorStop(0.75, "#ff0000");  // red
-      gradient.addColorStop(1.00, "#aaaaaa");  // IR/gray
+      const stops = [
+        { pos: 0.00, color: "#8B00FF" },  // 190 nm (UV violet)
+        { pos: 0.22, color: "#0000FF" },  // ~300 nm (blue)
+        { pos: 0.40, color: "#00FF00" },  // ~400 nm (green)
+        { pos: 0.60, color: "#FFFF00" },  // ~500 nm (yellow)
+        { pos: 0.75, color: "#FF7F00" },  // ~600 nm (orange)
+        { pos: 0.88, color: "#FF0000" },  // ~700 nm (red)
+        { pos: 1.00, color: "#999999" }   // ~800 nm (IR-gray)
+      ];
+      stops.forEach(stop => gradient.addColorStop(stop.pos, stop.color));
 
       chart = new Chart(chartCtx, {
         type: 'line',
@@ -122,7 +127,7 @@
           labels: labels,
           datasets: [{
             label: "Absorbance Spectrum",
-            data: values,
+            data: normalizedValues,
             borderColor: "#000",
             backgroundColor: gradient,
             fill: true,
@@ -134,7 +139,7 @@
           responsive: true,
           maintainAspectRatio: true,
           plugins: {
-            legend: { display: true },
+            legend: { display: false },
             tooltip: { mode: 'index', intersect: false }
           },
           scales: {
@@ -143,13 +148,14 @@
               min: 190,
               max: 800,
               ticks: {
-                callback: value => value + ' nm'
+                callback: (value) => value % 100 === 0 ? value + ' nm' : '',
+                maxTicksLimit: 8
               }
             },
             y: {
-              title: { display: true, text: "Absorbance" },
+              title: { display: true, text: "Absorbance (normalized)" },
               beginAtZero: true,
-              max: 2  // Adjust this if needed
+              max: 1
             }
           }
         }
