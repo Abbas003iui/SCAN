@@ -2,33 +2,56 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Light Spectrum Analyzer</title>
+  <title>Absorbance Spectrum Analyzer</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      background: #f5f5f5;
+      background: #f4f4f4;
       margin: 0;
       padding: 20px;
     }
+
     canvas {
       width: 800px !important;
       height: 400px !important;
       margin: 20px auto;
       background-color: #fff;
     }
+
     .upload {
       margin: 10px;
+    }
+
+    .instructions {
+      background: #ffffff;
+      border: 1px solid #ccc;
+      padding: 15px;
+      max-width: 800px;
+      margin: 10px auto;
+      text-align: left;
     }
   </style>
 </head>
 <body>
-  <h1>Light Spectrum Analyzer</h1>
-  <p>1. Upload <strong>blank/reference image</strong><br>2. Upload the <strong>sample image</strong> to see absorbance</p>
+  <h1>Absorbance Spectrum Analyzer</h1>
+
+  <div class="instructions">
+    <h3>Instructions:</h3>
+    <ol>
+      <li>Upload a <strong>blank/reference image</strong> that represents the full intensity (I₀) without any sample.</li>
+      <li>Then, upload a <strong>sample image</strong> representing transmitted light through the sample (I).</li>
+      <li>The system will calculate absorbance using the formula: <code>A = log₁₀(I₀ / I)</code></li>
+      <li>The graph will show absorbance across wavelengths from 380 nm to 750 nm.</li>
+      <li>The area under the graph is color-coded by wavelength; the trendline is in black.</li>
+      <li>Absorbance is limited between 0 and 1.</li>
+    </ol>
+  </div>
+
   <input type="file" accept="image/*" id="blankUpload" class="upload" />
   <input type="file" accept="image/*" id="sampleUpload" class="upload" />
-  <br>
+
   <canvas id="spectrumChart"></canvas>
 
   <script>
@@ -92,7 +115,6 @@
         if (I > 0 && I0 > 0) {
           A = Math.log10(I0 / I);
         }
-        // Clamp absorbance strictly between 0 and 1
         return Math.max(0, Math.min(A, 1));
       });
 
@@ -144,20 +166,13 @@
               title: { display: true, text: 'Absorbance' },
               min: 0,
               max: 1,
-              ticks: {
-                stepSize: 0.1
-              }
+              ticks: { stepSize: 0.1 }
             }
           },
           plugins: {
-            tooltip: {
-              callbacks: {
-                label: (ctx) => `Absorbance: ${ctx.formattedValue}`
-              }
-            },
             title: {
               display: true,
-              text: `Peak Wavelength: ${peakWavelength} nm | Absorbance: ${peakValue}`
+              text: `Peak Absorbance at ${peakWavelength} nm: A = ${peakValue}`
             },
             legend: {
               display: false
