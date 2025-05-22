@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Light Spectrum Analyzer with Calibration</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -41,9 +41,9 @@
   <div id="instructions">
     <h2>🧪 How to Calibrate & Analyze:</h2>
     <ol>
-      <li><strong>Step 1:</strong> Upload a <strong>blank (calibration)</strong> image using the first upload button. This image should contain a light spectrum with no sample.</li>
-      <li><strong>Step 2:</strong> Upload your <strong>sample</strong> spectrum image using the second button. This will apply the calibration and show the absorbance graph.</li>
-      <li>Make sure both images are of the same resolution and alignment.</li>
+      <li><strong>Step 1:</strong> Upload a <strong>blank (calibration)</strong> image using the first button. This image should contain a light spectrum with no sample.</li>
+      <li><strong>Step 2:</strong> Upload your <strong>sample</strong> spectrum image using the second button. Absorbance will be calculated as log10(I₀/I).</li>
+      <li>Ensure both images have the same alignment and resolution.</li>
     </ol>
   </div>
 
@@ -68,7 +68,7 @@
         else if (wavelength < 645) { r = 1; g = -(wavelength - 645) / (645 - 580); }
         else { r = 1; }
       }
-      return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, 0.9)`;
+      return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, 0.5)`;
     }
 
     function extractSpectrum(img) {
@@ -112,27 +112,28 @@
       const peakWavelength = labels[peakIndex];
       const peakValue = absorbance[peakIndex].toFixed(2);
 
-      const colors = labels.map(w => getColor(w));
-
-      const data = {
-        labels: labels,
-        datasets: [{
-          label: 'Absorbance (AU)',
-          data: absorbance,
-          borderColor: 'black',
-          backgroundColor: colors,
-          fill: true,
-          tension: 0.3
-        }]
-      };
+      // Split dataset into many small points to apply gradient color
+      const datasets = labels.map((label, i) => ({
+        label: `${label} nm`,
+        data: [{ x: label, y: absorbance[i] }],
+        borderColor: 'black',
+        backgroundColor: getColor(label),
+        pointRadius: 0,
+        fill: 'origin',
+        tension: 0.4,
+        showLine: true
+      }));
 
       const config = {
-        type: 'line',
-        data: data,
+        type: 'scatter',
+        data: {
+          datasets: datasets
+        },
         options: {
           responsive: true,
           scales: {
             x: {
+              type: 'linear',
               title: { display: true, text: 'Wavelength (nm)' },
               min: 380,
               max: 750
@@ -145,12 +146,20 @@
           plugins: {
             tooltip: {
               callbacks: {
-                label: (ctx) => `Absorbance: ${ctx.formattedValue}`
+                label: (ctx) => `Wavelength: ${ctx.raw.x} nm | Absorbance: ${ctx.raw.y.toFixed(2)}`
               }
             },
             title: {
               display: true,
               text: `Peak: ${peakWavelength} nm | Absorbance: ${peakValue}`
+            },
+            legend: {
+              display: false
+            }
+          },
+          elements: {
+            line: {
+              borderWidth: 1
             }
           }
         }
@@ -171,7 +180,7 @@
           const spectrum = extractSpectrum(img);
           if (isBlank) {
             blankSpectrum = spectrum;
-            alert("✅ Calibration image loaded. Now upload your sample image.");
+            alert("✅ Calibration (blank) image loaded. Now upload your sample image.");
           } else {
             plotSpectrum(spectrum, img.width);
           }
