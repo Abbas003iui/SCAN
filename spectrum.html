@@ -9,50 +9,54 @@
       font-family: Arial, sans-serif;
       text-align: center;
       background: #f4f4f4;
-      margin: 0;
       padding: 20px;
     }
 
     canvas {
-      width: 800px !important;
-      height: 400px !important;
+      margin-top: 30px;
+      background: #fff;
+      border: 1px solid #ccc;
+    }
+
+    .instructions {
+      max-width: 800px;
       margin: 20px auto;
-      background-color: #fff;
+      padding: 20px;
+      background: #ffffff;
+      border: 2px solid #0077cc;
+      border-radius: 10px;
+      text-align: left;
+    }
+
+    .instructions h3 {
+      margin-top: 0;
+      color: #0077cc;
     }
 
     .upload {
       margin: 10px;
     }
-
-    .instructions {
-      background: #ffffff;
-      border: 1px solid #ccc;
-      padding: 15px;
-      max-width: 800px;
-      margin: 10px auto;
-      text-align: left;
-    }
   </style>
 </head>
 <body>
+
   <h1>Absorbance Spectrum Analyzer</h1>
 
   <div class="instructions">
-    <h3>Instructions:</h3>
+    <h3>📘 Instructions:</h3>
     <ol>
-      <li>Upload a <strong>blank/reference image</strong> that represents the full intensity (I₀) without any sample.</li>
-      <li>Then, upload a <strong>sample image</strong> representing transmitted light through the sample (I).</li>
-      <li>The system will calculate absorbance using the formula: <code>A = log₁₀(I₀ / I)</code></li>
-      <li>The graph will show absorbance across wavelengths from 380 nm to 750 nm.</li>
-      <li>The area under the graph is color-coded by wavelength; the trendline is in black.</li>
-      <li>Absorbance is limited between 0 and 1.</li>
+      <li>Upload a <strong>blank/reference image</strong> first. This should be a photo with full light passing through (I₀).</li>
+      <li>Then upload a <strong>sample image</strong> of the same setup but with your substance/screen/sample added (I).</li>
+      <li>The absorbance at each wavelength will be calculated as: <code>A = log₁₀(I₀ / I)</code>.</li>
+      <li>The graph will plot absorbance (0 to 1) across the visible spectrum (380 nm – 750 nm).</li>
+      <li>The area under the curve is color-coded by wavelength, and the trendline is in black.</li>
     </ol>
   </div>
 
   <input type="file" accept="image/*" id="blankUpload" class="upload" />
   <input type="file" accept="image/*" id="sampleUpload" class="upload" />
 
-  <canvas id="spectrumChart"></canvas>
+  <canvas id="spectrumChart" width="800" height="400"></canvas>
 
   <script>
     const ctx = document.getElementById('spectrumChart').getContext('2d');
@@ -217,5 +221,6 @@
       if (file) reader.readAsDataURL(file);
     });
   </script>
+
 </body>
 </html>
