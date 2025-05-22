@@ -2,322 +2,191 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Light Spectrum Analyzer</title>
+  <title>Light Spectrum Analyzer with Calibration</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
-      background: #f5f5f5;
-      margin: 0;
-      padding: 0 10px 40px 10px;
+      background: #f0f0f0;
     }
-    h1 {
-      margin-top: 20px;
+    canvas {
+      max-width: 90%;
+      margin: 20px auto;
     }
-    #uploadSection {
-      margin: 20px 0;
+    .upload {
+      margin: 10px;
     }
     #instructions {
-      max-width: 800px;
-      margin: 10px auto 30px auto;
-      text-align: left;
-      background: #e8f0fe;
-      border: 1px solid #a0c4ff;
+      background: #ffffff;
       padding: 15px;
-      border-radius: 8px;
-      font-size: 14px;
-      color: #1a1a1a;
-      line-height: 1.4;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      margin: 20px auto;
+      max-width: 600px;
+      text-align: left;
     }
-    #images {
-      display: flex;
-      justify-content: center;
-      gap: 30px;
-      margin-bottom: 20px;
-      flex-wrap: wrap;
+    h2 {
+      color: #333;
     }
-    #images div {
-      background: white;
-      border: 2px solid #aaa;
-      border-radius: 8px;
-      padding: 10px;
-      max-width: 320px;
-      box-shadow: 2px 2px 6px #ccc;
-    }
-    #images img {
-      max-width: 300px;
-      max-height: 200px;
-      border-radius: 6px;
-      object-fit: contain;
-      display: block;
-      margin: 0 auto;
-    }
-    #chartContainer {
-      position: relative;
-      max-width: 900px;
-      height: 400px;
-      margin: 0 auto;
+    label {
+      display: inline-block;
+      margin-bottom: 5px;
     }
   </style>
 </head>
 <body>
-  <h1>Light Spectrum Analyzer</h1>
+  <h1>Light Spectrum Analyzer 🌈</h1>
 
   <div id="instructions">
-    <strong>Instructions:</strong>
+    <h2>🧪 How to Calibrate & Analyze:</h2>
     <ol>
-      <li>Upload a <strong>blank/reference</strong> image (e.g., empty cuvette or white background) in "Upload Blank".</li>
-      <li>Upload the <strong>sample</strong> image in "Upload Sample".</li>
-      <li>The absorbance is calculated as A = log<sub>10</sub>(I<sub>blank</sub> / I<sub>sample</sub>), clipped to 0, normalized ≤1.</li>
-      <li>The graph plots absorbance with a black trendline and a colored fill gradient matching the visible spectrum wavelengths (380–750 nm).</li>
-      <li>Peak wavelength and absorbance are displayed above the graph.</li>
+      <li><strong>Step 1:</strong> Upload a <strong>blank (calibration)</strong> image using the first button. This image should contain a light spectrum with no sample.</li>
+      <li><strong>Step 2:</strong> Upload your <strong>sample</strong> spectrum image using the second button. Absorbance will be calculated as log₁₀(I₀/I).</li>
+      <li>Ensure both images have the same alignment and resolution.</li>
     </ol>
-    <p><em>Note:</em> For best results, use images with the same dimensions.</p>
   </div>
 
-  <div id="uploadSection">
-    <label>
-      Upload Blank (Reference): 
-      <input type="file" accept="image/*" id="uploadBlank" />
-    </label>
-    <br /><br />
-    <label>
-      Upload Sample: 
-      <input type="file" accept="image/*" id="uploadSample" />
-    </label>
-  </div>
+  <input type="file" accept="image/*" id="blankUpload" class="upload" />
+  <label for="blankUpload"><strong>Upload Calibration (Blank)</strong></label><br>
+  <input type="file" accept="image/*" id="sampleUpload" class="upload" />
+  <label for="sampleUpload"><strong>Upload Sample Image</strong></label><br>
 
-  <div id="images">
-    <div>
-      <p><strong>Blank Image</strong></p>
-      <img id="blankImage" alt="Blank Image Preview" />
-    </div>
-    <div>
-      <p><strong>Sample Image</strong></p>
-      <img id="sampleImage" alt="Sample Image Preview" />
-    </div>
-  </div>
-
-  <div id="chartContainer">
-    <canvas id="spectrumChart"></canvas>
-  </div>
+  <canvas id="spectrumChart" width="800" height="400"></canvas>
 
   <script>
-    const ctx = document.getElementById('spectrumChart').getContext('2d');
-    let chart = null;
     let blankSpectrum = null;
-    let sampleSpectrum = null;
+    let chart = null;
 
-    // Converts wavelength (nm) to saturated rgb color for gradient
-    function wavelengthToRgb(wavelength) {
-      let R = 0, G = 0, B = 0;
-      if (wavelength >= 380 && wavelength < 440) {
-        R = -(wavelength - 440) / (440 - 380);
-        G = 0;
-        B = 1;
-      } else if (wavelength >= 440 && wavelength < 490) {
-        R = 0;
-        G = (wavelength - 440) / (490 - 440);
-        B = 1;
-      } else if (wavelength >= 490 && wavelength < 510) {
-        R = 0;
-        G = 1;
-        B = -(wavelength - 510) / (510 - 490);
-      } else if (wavelength >= 510 && wavelength < 580) {
-        R = (wavelength - 510) / (580 - 510);
-        G = 1;
-        B = 0;
-      } else if (wavelength >= 580 && wavelength < 645) {
-        R = 1;
-        G = -(wavelength - 645) / (645 - 580);
-        B = 0;
-      } else if (wavelength >= 645 && wavelength <= 750) {
-        R = 1;
-        G = 0;
-        B = 0;
-      }
-      // Saturate and convert to 0-255
-      R = Math.round(Math.min(Math.max(R, 0), 1) * 255);
-      G = Math.round(Math.min(Math.max(G, 0), 1) * 255);
-      B = Math.round(Math.min(Math.max(B, 0), 1) * 255);
-      return `rgb(${R},${G},${B})`;
-    }
-
-    // Extract average vertical intensity for each x pixel
-    function extractIntensity(img) {
+    function extractSpectrum(img) {
       const canvas = document.createElement('canvas');
-      const cctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d');
       canvas.width = img.width;
       canvas.height = img.height;
-      cctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
+      ctx.drawImage(img, 0, 0);
       const spectrum = [];
-      for (let x = 0; x < canvas.width; x++) {
+
+      for (let x = 0; x < img.width; x++) {
         let sum = 0;
-        for (let y = 0; y < canvas.height; y++) {
-          const p = cctx.getImageData(x, y, 1, 1).data;
-          // Use luminance formula for intensity
-          const lum = 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
-          sum += lum;
+        for (let y = 0; y < img.height; y++) {
+          const pixel = ctx.getImageData(x, y, 1, 1).data;
+          sum += (pixel[0] + pixel[1] + pixel[2]) / 3;
         }
-        spectrum.push(sum / canvas.height);
+        spectrum.push(sum / img.height);
       }
+
       return spectrum;
     }
 
-    // Calculate absorbance = log10(blank/sample), clamp at 0, normalize if >1
-    function computeAbsorbance(sample, blank) {
-      const length = Math.min(sample.length, blank.length);
-      const absorbanceRaw = [];
-      for (let i = 0; i < length; i++) {
-        const sVal = sample[i] === 0 ? 0.0001 : sample[i];
-        const bVal = blank[i] === 0 ? 0.0001 : blank[i];
-        let val = Math.log10(bVal / sVal);
-        if (val < 0) val = 0;
-        absorbanceRaw.push(val);
-      }
-      const maxVal = Math.max(...absorbanceRaw);
-      if (maxVal > 1) {
-        return absorbanceRaw.map(v => v / maxVal);
-      }
-      return absorbanceRaw;
-    }
-
-    // Create wavelength labels between 380 and 750 nm for data points
-    function prepareLabels(length) {
-      const labels = [];
+    function plotSpectrum(sampleSpectrum, width) {
       const startWavelength = 380;
       const endWavelength = 750;
-      for (let i = 0; i < length; i++) {
-        const w = startWavelength + (i / length) * (endWavelength - startWavelength);
-        labels.push(Math.round(w));
+      const labels = sampleSpectrum.map((_, i) =>
+        Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
+      );
+
+      let absorbance = sampleSpectrum;
+      if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
+        absorbance = sampleSpectrum.map((I, i) => {
+          const I0 = blankSpectrum[i];
+          if (I > 0 && I0 > 0) return Math.log10(I0 / I);
+          return 0;
+        });
       }
-      return labels;
-    }
-
-    // Generate gradient for fill dynamically after layout (chartArea)
-    function createGradient(ctx, chartArea, labels) {
-      const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-      const n = labels.length;
-      for (let i = 0; i < n; i++) {
-        const pos = i / (n - 1);
-        gradient.addColorStop(pos, wavelengthToRgb(labels[i]));
-      }
-      return gradient;
-    }
-
-    function updateChart() {
-      if (!blankSpectrum || !sampleSpectrum) return;
-
-      const absorbance = computeAbsorbance(sampleSpectrum, blankSpectrum);
-      const labels = prepareLabels(absorbance.length);
 
       const peakIndex = absorbance.indexOf(Math.max(...absorbance));
       const peakWavelength = labels[peakIndex];
-      const peakValue = absorbance[peakIndex].toFixed(3);
+      const peakValue = absorbance[peakIndex].toFixed(2);
+
+      const dataPoints = labels.map((label, i) => ({ x: label, y: absorbance[i] }));
+
+      const ctx = document.getElementById('spectrumChart').getContext('2d');
 
       if (chart) chart.destroy();
 
-      // We create the chart with a placeholder fill color, 
-      // then use plugin 'beforeDatasetsDraw' to apply the gradient fill correctly once chart area is known
       chart = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: labels,
           datasets: [{
             label: 'Absorbance',
-            data: absorbance,
-            borderColor: 'black',
-            backgroundColor: 'rgba(0,0,0,0)', // placeholder, will be overwritten by gradient
+            data: dataPoints,
             fill: true,
-            tension: 0.3,
-            pointRadius: 0
+            borderColor: 'black',
+            pointRadius: 0,
+            tension: 0.3
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          layout: {
-            padding: { bottom: 40, left: 50, right: 20, top: 20 }
-          },
           scales: {
             x: {
-              title: { display: true, text: 'Wavelength (nm)', font: { size: 14 } },
-              ticks: {
-                maxRotation: 0,
-                minRotation: 0,
-                font: { size: 12 },
-                maxTicksLimit: 12
-              },
+              type: 'linear',
+              title: { display: true, text: 'Wavelength (nm)' },
               min: 380,
-              max: 750,
-              grid: { display: true }
+              max: 750
             },
             y: {
-              title: { display: true, text: 'Absorbance', font: { size: 14 } },
-              min: 0,
-              max: 1,
-              ticks: { font: { size: 12 } },
-              grid: { display: true }
+              title: { display: true, text: 'Absorbance' },
+              beginAtZero: true
             }
           },
           plugins: {
-            legend: { display: false },
             title: {
               display: true,
-              text: `Peak Absorbance: ${peakValue} at ${peakWavelength} nm`,
-              font: { size: 16, weight: 'bold' }
-            }
-          },
-          animation: false,
-          interaction: {
-            intersect: false,
-            mode: 'nearest',
+              text: `Peak: ${peakWavelength} nm | Absorbance: ${peakValue}`
+            },
+            tooltip: {
+              callbacks: {
+                label: ctx => `Wavelength: ${ctx.raw.x} nm | Absorbance: ${ctx.raw.y.toFixed(2)}`
+              }
+            },
+            legend: { display: false }
           }
         },
         plugins: [{
-          id: 'gradientFillPlugin',
-          beforeDatasetsDraw(chart) {
-            const ctx = chart.ctx;
-            const chartArea = chart.chartArea;
-            if (!chartArea) return;
+          id: 'custom-gradient',
+          beforeDraw: (chartInstance) => {
+            const ctx = chartInstance.ctx;
+            const chartArea = chartInstance.chartArea;
+            const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+            gradient.addColorStop(0.0, "#8B00FF");  // Violet
+            gradient.addColorStop(0.15, "#0000FF"); // Blue
+            gradient.addColorStop(0.33, "#00FFFF"); // Cyan
+            gradient.addColorStop(0.5, "#00FF00");  // Green
+            gradient.addColorStop(0.66, "#FFFF00"); // Yellow
+            gradient.addColorStop(0.83, "#FF7F00"); // Orange
+            gradient.addColorStop(1.0, "#FF0000");  // Red
 
-            const gradient = createGradient(ctx, chartArea, chart.data.labels);
-            chart.data.datasets[0].backgroundColor = gradient;
+            chartInstance.data.datasets[0].backgroundColor = gradient;
           }
         }]
       });
     }
 
-    // Load image and extract spectrum
-    function loadImageAndExtract(file, imgElement, isBlank) {
+    function handleImageUpload(event, isBlank) {
+      const file = event.target.files[0];
+      if (!file) return;
+
       const reader = new FileReader();
-      reader.onload = e => {
-        imgElement.src = e.target.result;
-        imgElement.onload = () => {
-          const spectrum = extractIntensity(imgElement);
+      reader.onload = function(evt) {
+        const img = new Image();
+        img.onload = function() {
+          const spectrum = extractSpectrum(img);
           if (isBlank) {
             blankSpectrum = spectrum;
+            alert("✅ Calibration (blank) image loaded. Now upload your sample image.");
           } else {
-            sampleSpectrum = spectrum;
+            plotSpectrum(spectrum, img.width);
           }
-          updateChart();
         };
+        img.src = evt.target.result;
       };
-      if (file) reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
     }
 
-    document.getElementById('uploadBlank').addEventListener('change', e => {
-      const file = e.target.files[0];
-      if (file) loadImageAndExtract(file, document.getElementById('blankImage'), true);
-    });
-
-    document.getElementById('uploadSample').addEventListener('change', e => {
-      const file = e.target.files[0];
-      if (file) loadImageAndExtract(file, document.getElementById('sampleImage'), false);
-    });
-
+    document.getElementById('blankUpload').addEventListener('change', e => handleImageUpload(e, true));
+    document.getElementById('sampleUpload').addEventListener('change', e => handleImageUpload(e, false));
   </script>
 </body>
 </html>
