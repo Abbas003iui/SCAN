@@ -104,7 +104,8 @@
       return "#FF0000"; // Red
     }
 
-    function plotSpectrum(absorbance, width) {
+    function plotSpectrum(absorbance) {
+      const width = absorbance.length;
       const labels = absorbance.map((_, i) =>
         Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
       );
@@ -116,11 +117,10 @@
 
       const dataPoints = labels.map((label, i) => ({ x: label, y: normalized[i] }));
       const ctx = document.getElementById('spectrumChart').getContext('2d');
-      if (chart) {
-        chart.destroy();
-      }
+      if (chart) chart.destroy();
 
-      const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
+      // Create gradient across wavelength range in pixel space
+      const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.clientWidth, 0);
       for (let i = 0; i <= 1; i += 0.05) {
         const w = startWavelength + i * (endWavelength - startWavelength);
         gradient.addColorStop(i, wavelengthToColor(w));
@@ -134,7 +134,7 @@
             data: dataPoints,
             borderColor: 'black',
             backgroundColor: gradient,
-            fill: 'origin',
+            fill: true,
             pointRadius: 0,
             tension: 0.3
           }]
@@ -169,7 +169,7 @@
     function tryPlotIfReady() {
       if (blankSpectrum && sampleSpectrum && blankSpectrum.length === sampleSpectrum.length) {
         const absorbance = calculateAbsorbance(blankSpectrum, sampleSpectrum);
-        plotSpectrum(absorbance, blankSpectrum.length);
+        plotSpectrum(absorbance);
       }
     }
 
