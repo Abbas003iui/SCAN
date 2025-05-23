@@ -64,7 +64,7 @@
         </div>
         <p class="text-sm text-gray-400">Drag the red vertical lines to align known wavelengths, then enter their values and click <strong>Save Calibration</strong>. The absorbance graph below will show the spectrum from the calibration image itself.</p>
       </div>
-      <div class="relative overflow-x-auto">
+      <div class="relative overflow-x-auto" style="position: relative; height: 300px;">
         <canvas id="calibCanvas"></canvas>
         <div id="line1" class="line-handle hidden"></div>
         <div id="line2" class="line-handle hidden"></div>
@@ -150,29 +150,122 @@ function plotCalibration(intensity) {
   const wavelengths = intensity.map((_, i) => offset + i * scale);
   const absorbance = intensity.map(v => 1 - v);
 
+  const peakIndex = absorbance.indexOf(Math.max(...absorbance));
+  const peakWavelength = wavelengths[peakIndex];
+
   if (chart) chart.destroy();
   chart = new Chart(graphCanvas, {
     type: 'line',
     data: {
       labels: wavelengths,
-      datasets: [{
-        label: 'Absorbance',
-        data: absorbance,
-        borderColor: 'cyan',
-        borderWidth: 2,
-        pointRadius: 0
-      }]
+      datasets: [
+        {
+          label: 'Absorbance',
+          data: absorbance,
+          borderColor: 'blue',
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false
+        },
+        {
+          label: 'Peak',
+          data: wavelengths.map((_, i) => i === peakIndex ? absorbance[i] : null),
+          borderColor: 'red',
+          borderWidth: 0,
+          backgroundColor: 'red',
+          pointRadius: 5,
+          type: 'line',
+          fill: false
+        }
+      ]
     },
     options: {
       responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      interaction: {
+        mode: 'nearest',
+        axis: 'x',
+        intersect: false
+      },
+      onClick: (evt) => {
+        const rect = chart.canvas.getBoundingClientRect();
+        const xClick = evt.clientX - rect.left;
+        const clickedWavelength = chart.scales.x.getValueForPixel(xClick);
+
+        const closestIndex = wavelengths.reduce((prev, curr, idx) => {
+          return Math.abs(curr - clickedWavelength) < Math.abs(wavelengths[prev] - clickedWavelength) ? idx : prev;
+        }, 0);
+
+        const newX = (wavelengths[closestIndex] - offset) / scale;
+        x1 = newX;
+        drawLines();
+        const updatedIntensity = getIntensityProfile();
+        plotCalibration(updatedIntensity);
+      },
       scales: {
         x: {
           type: 'linear',
           title: { display: true, text: 'Wavelength (nm)' },
+          ticks: { color: 'black' },
+          grid: { color: '#ccc' }
         },
         y: {
           min: 0, max: 1,
-          title: { display: true, text: 'Absorbance' }
+          title: { display: true, text: 'Absorbance' },
+          ticks: { color: 'black' },
+          grid: { color: '#ccc' }
+        }
+      }
+    },
+    plugins: [{
+      id: 'whiteBackground',
+      beforeDraw: (chart) => {
+        const ctx = chart.canvas.getContext('2d');
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, chart.width, chart.height);
+        ctx.restore();
+      }
+    }]
+  });
+}      },
+      interaction: {
+        mode: 'nearest',
+        axis: 'x',
+        intersect: false
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'Wavelength (nm)' },
+          ticks: { color: 'black' },
+          grid: { color: '#ccc' }
+        },
+        y: {
+          min: 0, max: 1,
+          title: { display: true, text: 'Absorbance' },
+          ticks: { color: 'black' },
+          grid: { color: '#ccc' }
+        }
+      }
+    },
+    plugins: [{
+      id: 'whiteBackground',
+      beforeDraw: (chart) => {
+        const ctx = chart.canvas.getContext('2d');
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, chart.width, chart.height);
+        ctx.restore();
+      }
+    }]
+  });
+}
         }
       }
     }
