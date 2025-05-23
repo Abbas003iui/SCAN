@@ -106,7 +106,123 @@
     </footer>
 
     <script>
-      // (script remains unchanged)
-    </script>
+const calibCanvas = document.getElementById('calibCanvas');
+const calibCtx = calibCanvas.getContext('2d');
+const calibInput = document.getElementById('calibImageInput');
+const saveCalibBtn = document.getElementById('saveCalibBtn');
+const lambda1 = document.getElementById('lambda1');
+const lambda2 = document.getElementById('lambda2');
+const line1 = document.getElementById('line1');
+const line2 = document.getElementById('line2');
+const graphCanvas = document.getElementById('graphCanvas');
+let chart;
+
+let img = new Image();
+let imgLoaded = false;
+let x1 = 100, x2 = 300;
+let dragging = null;
+
+function drawLines() {
+  line1.style.left = `${x1}px`;
+  line2.style.left = `${x2}px`;
+  line1.classList.remove('hidden');
+  line2.classList.remove('hidden');
+}
+
+function getIntensityProfile() {
+  const data = calibCtx.getImageData(0, calibCanvas.height / 2, calibCanvas.width, 1).data;
+  const intensity = [];
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i+1], b = data[i+2];
+    const avg = (r + g + b) / 3 / 255;
+    intensity.push(avg);
+  }
+  return intensity;
+}
+
+function plotCalibration(intensity) {
+  const nm1 = parseFloat(lambda1.value);
+  const nm2 = parseFloat(lambda2.value);
+  const width = intensity.length;
+  const scale = (nm2 - nm1) / (x2 - x1);
+  const offset = nm1 - x1 * scale;
+
+  const wavelengths = intensity.map((_, i) => offset + i * scale);
+  const absorbance = intensity.map(v => 1 - v);
+
+  if (chart) chart.destroy();
+  chart = new Chart(graphCanvas, {
+    type: 'line',
+    data: {
+      labels: wavelengths,
+      datasets: [{
+        label: 'Absorbance',
+        data: absorbance,
+        borderColor: 'cyan',
+        borderWidth: 2,
+        pointRadius: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'Wavelength (nm)' },
+        },
+        y: {
+          min: 0, max: 1,
+          title: { display: true, text: 'Absorbance' }
+        }
+      }
+    }
+  });
+}
+
+saveCalibBtn.addEventListener('click', () => {
+  if (!imgLoaded) return;
+  const intensity = getIntensityProfile();
+  plotCalibration(intensity);
+});
+
+calibInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    img.onload = () => {
+      calibCanvas.width = img.width;
+      calibCanvas.height = img.height;
+      calibCtx.drawImage(img, 0, 0);
+      drawLines();
+      saveCalibBtn.disabled = false;
+      imgLoaded = true;
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+[line1, line2].forEach((line, idx) => {
+  line.addEventListener('mousedown', () => {
+    dragging = idx;
+  });
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (dragging === null) return;
+  const rect = calibCanvas.getBoundingClientRect();
+  const x = Math.min(Math.max(0, e.clientX - rect.left), calibCanvas.width);
+  if (dragging === 0) x1 = x;
+  if (dragging === 1) x2 = x;
+  drawLines();
+});
+
+window.addEventListener('mouseup', () => {
+  dragging = null;
+});
+
+document.getElementById('year').textContent = new Date().getFullYear();
+</script>
   </body>
 </html>
