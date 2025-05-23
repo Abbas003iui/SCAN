@@ -1,321 +1,240 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Web Spectrometer Analyzer</title>
-    <!-- Tailwind (via CDN for quick prototyping) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-      #calibCanvas {
-        cursor: crosshair;
-        max-width: 100%;
-        background: #111;
-        display: block;
-        margin: 0 auto;
-        height: 300px;
-        width: 100%;
-      }
-      #graphCanvas {
-        width: 100% !important;
-        height: 400px !important;
-      }
-      .line-handle {
-        position: absolute;
-        top: 0;
-        width: 2px;
-        background: #f00;
-        cursor: ew-resize;
-        mix-blend-mode: difference;
-      }
-    </style>
-  </head>
-  <body class="bg-gray-900 text-gray-100 antialiased min-h-screen flex flex-col items-center p-4">
-    <h1 class="text-3xl font-bold mb-4 text-center">Web Color Spectrometer Analyzer</h1>
-
-    <!-- Step 1: Calibration -->
-    <section class="w-full max-w-4xl mb-8">
-      <h2 class="text-xl font-semibold mb-2">1. Calibration</h2>
-      <div class="mb-2 space-y-2">
-        <input
-          type="file"
-          id="calibImageInput"
-          accept="image/*"
-          class="file:mr-4 file:bg-indigo-600 file:text-white file:px-3 file:py-1 file:rounded hover:file:bg-indigo-500 transition"
-        />
-        <div class="flex flex-wrap gap-4 items-center">
-          <div>
-            <label class="text-sm mr-1">λ<sub>1</sub> (nm):</label>
-            <input id="lambda1" type="number" value="400" class="bg-gray-800 p-1 rounded w-24" />
-          </div>
-          <div>
-            <label class="text-sm mr-1">λ<sub>2</sub> (nm):</label>
-            <input id="lambda2" type="number" value="700" class="bg-gray-800 p-1 rounded w-24" />
-          </div>
-          <button
-            id="saveCalibBtn"
-            class="bg-green-600 px-4 py-2 rounded hover:bg-green-500 disabled:opacity-40"
-            disabled
-          >
-            Save Calibration
-          </button>
-        </div>
-        <p class="text-sm text-gray-400">Drag the red vertical lines to align known wavelengths, then enter their values and click <strong>Save Calibration</strong>. The absorbance graph below will show the spectrum from the calibration image itself.</p>
-      </div>
-      <div class="relative overflow-x-auto" style="position: relative; height: 300px;">
-        <canvas id="calibCanvas"></canvas>
-        <div id="line1" class="line-handle hidden"></div>
-        <div id="line2" class="line-handle hidden"></div>
-      </div>
-    </section>
-
-    <!-- Step 2: Blank Spectrum -->
-    <section class="w-full max-w-4xl mb-8">
-      <h2 class="text-xl font-semibold mb-2">2. Blank Spectrum</h2>
-      <input
-        type="file"
-        id="blankImageInput"
-        accept="image/*"
-        class="file:mr-4 file:bg-indigo-600 file:text-white file:px-3 file:py-1 file:rounded hover:file:bg-indigo-500 transition"
-        disabled
-      />
-    </section>
-
-    <!-- Step 3: Sample Spectrum -->
-    <section class="w-full max-w-4xl mb-8">
-      <h2 class="text-xl font-semibold mb-2">3. Sample Spectrum</h2>
-      <input
-        type="file"
-        id="sampleImageInput"
-        accept="image/*"
-        class="file:mr-4 file:bg-indigo-600 file:text-white file:px-3 file:py-1 file:rounded hover:file:bg-indigo-500 transition"
-        disabled
-      />
-    </section>
-
-    <!-- Step 4: Absorbance Graph -->
-    <section class="w-full max-w-4xl mb-8">
-      <h2 class="text-xl font-semibold mb-2">4. Absorbance vs. Wavelength</h2>
-      <canvas id="graphCanvas" class="bg-gray-800 rounded shadow"></canvas>
-    </section>
-
-    <footer class="text-xs text-gray-500 mt-auto text-center">
-      © <span id="year"></span> Web Spectrometer Analyzer · Inspired by Theremino Spectrometer
-    </footer>
-
-    <script>
-const calibCanvas = document.getElementById('calibCanvas');
-const calibCtx = calibCanvas.getContext('2d');
-const calibInput = document.getElementById('calibImageInput');
-const saveCalibBtn = document.getElementById('saveCalibBtn');
-const lambda1 = document.getElementById('lambda1');
-const lambda2 = document.getElementById('lambda2');
-const line1 = document.getElementById('line1');
-const line2 = document.getElementById('line2');
-const graphCanvas = document.getElementById('graphCanvas');
-let chart;
-
-let img = new Image();
-let imgLoaded = false;
-let x1 = 100, x2 = 300;
-let dragging = null;
-
-function drawLines() {
-  line1.style.left = `${x1}px`;
-  line2.style.left = `${x2}px`;
-  line1.classList.remove('hidden');
-  line2.classList.remove('hidden');
-}
-
-function getIntensityProfile() {
-  const data = calibCtx.getImageData(0, calibCanvas.height / 2, calibCanvas.width, 1).data;
-  const intensity = [];
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i], g = data[i+1], b = data[i+2];
-    const avg = (r + g + b) / 3 / 255;
-    intensity.push(avg);
-  }
-  return intensity;
-}
-
-function plotCalibration(intensity) {
-  const nm1 = parseFloat(lambda1.value);
-  const nm2 = parseFloat(lambda2.value);
-  const width = intensity.length;
-  const scale = (nm2 - nm1) / (x2 - x1);
-  const offset = nm1 - x1 * scale;
-
-  const wavelengths = intensity.map((_, i) => offset + i * scale);
-  const absorbance = intensity.map(v => 1 - v);
-
-  const peakIndex = absorbance.indexOf(Math.max(...absorbance));
-  const peakWavelength = wavelengths[peakIndex];
-
-  if (chart) chart.destroy();
-  chart = new Chart(graphCanvas, {
-    type: 'line',
-    data: {
-      labels: wavelengths,
-      datasets: [
-        {
-          label: 'Absorbance',
-          data: absorbance,
-          borderColor: 'blue',
-          borderWidth: 2,
-          pointRadius: 0,
-          fill: false
-        },
-        {
-          label: 'Peak',
-          data: wavelengths.map((_, i) => i === peakIndex ? absorbance[i] : null),
-          borderColor: 'red',
-          borderWidth: 0,
-          backgroundColor: 'red',
-          pointRadius: 5,
-          type: 'line',
-          fill: false
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: { display: false },
-        tooltip: { mode: 'index', intersect: false }
-      },
-      interaction: {
-        mode: 'nearest',
-        axis: 'x',
-        intersect: false
-      },
-      onClick: (evt) => {
-        const rect = chart.canvas.getBoundingClientRect();
-        const xClick = evt.clientX - rect.left;
-        const clickedWavelength = chart.scales.x.getValueForPixel(xClick);
-
-        const closestIndex = wavelengths.reduce((prev, curr, idx) => {
-          return Math.abs(curr - clickedWavelength) < Math.abs(wavelengths[prev] - clickedWavelength) ? idx : prev;
-        }, 0);
-
-        const newX = (wavelengths[closestIndex] - offset) / scale;
-        x1 = newX;
-        drawLines();
-        const updatedIntensity = getIntensityProfile();
-        plotCalibration(updatedIntensity);
-      },
-      scales: {
-        x: {
-          type: 'linear',
-          title: { display: true, text: 'Wavelength (nm)' },
-          ticks: { color: 'black' },
-          grid: { color: '#ccc' }
-        },
-        y: {
-          min: 0, max: 1,
-          title: { display: true, text: 'Absorbance' },
-          ticks: { color: 'black' },
-          grid: { color: '#ccc' }
-        }
-      }
-    },
-    plugins: [{
-      id: 'whiteBackground',
-      beforeDraw: (chart) => {
-        const ctx = chart.canvas.getContext('2d');
-        ctx.save();
-        ctx.globalCompositeOperation = 'destination-over';
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, chart.width, chart.height);
-        ctx.restore();
-      }
-    }]
-  });
-}      },
-      interaction: {
-        mode: 'nearest',
-        axis: 'x',
-        intersect: false
-      },
-      scales: {
-        x: {
-          type: 'linear',
-          title: { display: true, text: 'Wavelength (nm)' },
-          ticks: { color: 'black' },
-          grid: { color: '#ccc' }
-        },
-        y: {
-          min: 0, max: 1,
-          title: { display: true, text: 'Absorbance' },
-          ticks: { color: 'black' },
-          grid: { color: '#ccc' }
-        }
-      }
-    },
-    plugins: [{
-      id: 'whiteBackground',
-      beforeDraw: (chart) => {
-        const ctx = chart.canvas.getContext('2d');
-        ctx.save();
-        ctx.globalCompositeOperation = 'destination-over';
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, chart.width, chart.height);
-        ctx.restore();
-      }
-    }]
-  });
-}
-        }
-      }
+<head>
+  <meta charset="UTF-8" />
+  <title>UV-Vis Absorbance Spectrum Analyzer</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      background: #f5f5f5;
+      margin: 20px;
     }
-  });
-}
 
-saveCalibBtn.addEventListener('click', () => {
-  if (!imgLoaded) return;
-  const intensity = getIntensityProfile();
-  plotCalibration(intensity);
-});
+    canvas {
+      max-width: 900px;
+      height: auto !important;
+    }
 
-calibInput.addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    img.onload = () => {
-      calibCanvas.width = img.width;
-      calibCanvas.height = img.height;
-      calibCtx.drawImage(img, 0, 0);
-      drawLines();
-      saveCalibBtn.disabled = false;
-      imgLoaded = true;
-    };
-    img.src = reader.result;
-  };
-  reader.readAsDataURL(file);
-});
+    #chartContainer {
+      width: 100%;
+      max-width: 900px;
+      margin: 20px auto;
+      aspect-ratio: 2 / 1;
+      background: white;
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
 
-[line1, line2].forEach((line, idx) => {
-  line.addEventListener('mousedown', () => {
-    dragging = idx;
-  });
-});
+    .upload {
+      margin: 10px;
+    }
 
-window.addEventListener('mousemove', (e) => {
-  if (dragging === null) return;
-  const rect = calibCanvas.getBoundingClientRect();
-  const x = Math.min(Math.max(0, e.clientX - rect.left), calibCanvas.width);
-  if (dragging === 0) x1 = x;
-  if (dragging === 1) x2 = x;
-  drawLines();
-});
+    .preview-container {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      margin: 20px 0;
+    }
 
-window.addEventListener('mouseup', () => {
-  dragging = null;
-});
+    .preview-container img {
+      max-height: 150px;
+      border-radius: 8px;
+      border: 1px solid #aaa;
+    }
 
-document.getElementById('year').textContent = new Date().getFullYear();
-</script>
-  </body>
-</html>
+    #instructions {
+      max-width: 800px;
+      margin: auto;
+      text-align: left;
+      padding: 20px;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🌈 UV-Vis Absorbance Spectrum Analyzer</h1>
+
+  <div id="instructions">
+    <h2>📘 Instructions:</h2>
+    <ol>
+      <li>Upload a <strong>blank image</strong> (spectrum without sample).</li>
+      <li>Upload the <strong>sample image</strong> (spectrum with sample).</li>
+      <li>The graph will display the <strong>absorbance spectrum</strong> with a color fill based on wavelength (380–750 nm).</li>
+    </ol>
+  </div>
+
+  <input type="file" accept="image/*" id="blankUpload" class="upload" />
+  <label for="blankUpload"><strong>Upload Blank Image</strong></label><br>
+
+  <input type="file" accept="image/*" id="sampleUpload" class="upload" />
+  <label for="sampleUpload"><strong>Upload Sample Image</strong></label>
+
+  <div class="preview-container">
+    <div>
+      <p><strong>Blank Image</strong></p>
+      <img id="blankPreview" style="display:none;" />
+    </div>
+    <div>
+      <p><strong>Sample Image</strong></p>
+      <img id="samplePreview" style="display:none;" />
+    </div>
+  </div>
+
+  <div id="chartContainer">
+    <canvas id="spectrumChart"></canvas>
+  </div>
+
+  <script>
+    const startWavelength = 380;
+    const endWavelength = 750;
+    let blankSpectrum = null;
+    let chart = null;
+
+    function extractSpectrum(img) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      const spectrum = [];
+
+      for (let x = 0; x < img.width; x++) {
+        let sum = 0;
+        for (let y = 0; y < img.height; y++) {
+          const pixel = ctx.getImageData(x, y, 1, 1).data;
+          sum += (pixel[0] + pixel[1] + pixel[2]) / 3;
+        }
+        spectrum.push(sum / img.height);
+      }
+
+      return spectrum;
+    }
+
+    function wavelengthToColor(wavelength) {
+      if (wavelength < 440) return "#8B00FF"; // Violet
+      if (wavelength < 490) return "#0000FF"; // Blue
+      if (wavelength < 510) return "#00FFFF"; // Cyan
+      if (wavelength < 580) return "#00FF00"; // Green
+      if (wavelength < 600) return "#FFFF00"; // Yellow
+      if (wavelength < 645) return "#FF7F00"; // Orange
+      return "#FF0000"; // Red
+    }
+
+    function plotSpectrum(sampleSpectrum, width) {
+      const labels = sampleSpectrum.map((_, i) =>
+        Math.round(startWavelength + (i / width) * (endWavelength - startWavelength))
+      );
+
+      let absorbance = sampleSpectrum;
+      if (blankSpectrum && blankSpectrum.length === sampleSpectrum.length) {
+        absorbance = sampleSpectrum.map((I, i) => {
+          const I0 = blankSpectrum[i];
+          return (I > 0 && I0 > 0) ? Math.log10(I0 / I) : 0;
+        });
+      }
+
+      const peakIndex = absorbance.indexOf(Math.max(...absorbance));
+      const peakWavelength = labels[peakIndex];
+      const peakValue = absorbance[peakIndex].toFixed(2);
+
+      const dataPoints = labels.map((label, i) => ({
+        x: label,
+        y: absorbance[i]
+      }));
+
+      const ctx = document.getElementById('spectrumChart').getContext('2d');
+      if (chart) chart.destroy();
+
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: 'Absorbance',
+            data: dataPoints,
+            fill: true,
+            borderColor: 'black',
+            pointRadius: 0,
+            tension: 0.3,
+            backgroundColor: function(ctx) {
+              const chartArea = ctx.chart.chartArea;
+              if (!chartArea) return null;
+
+              const gradient = ctx.chart.ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+              for (let i = 0; i <= 1; i += 0.1) {
+                const w = startWavelength + i * (endWavelength - startWavelength);
+                gradient.addColorStop(i, wavelengthToColor(w));
+              }
+              return gradient;
+            }
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          aspectRatio: 2,
+          scales: {
+            x: {
+              type: 'linear',
+              title: { display: true, text: 'Wavelength (nm)' },
+              min: startWavelength,
+              max: endWavelength
+            },
+            y: {
+              title: { display: true, text: 'Absorbance' },
+              beginAtZero: true
+            }
+          },
+          plugins: {
+            title: {
+              display: true,
+              text: Peak Absorbance: ${peakValue} at ${peakWavelength} nm
+            },
+            tooltip: {
+              callbacks: {
+                label: ctx => λ: ${ctx.raw.x} nm | A: ${ctx.raw.y.toFixed(2)}
+              }
+            },
+            legend: { display: false }
+          }
+        }
+      });
+    }
+
+    function handleImageUpload(event, isBlank) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const img = new Image();
+        img.onload = function() {
+          const spectrum = extractSpectrum(img);
+          if (isBlank) {
+            blankSpectrum = spectrum;
+            document.getElementById('blankPreview').src = img.src;
+            document.getElementById('blankPreview').style.display = 'inline';
+            alert("✅ Blank (calibration) image loaded.");
+          } else {
+            document.getElementById('samplePreview').src = img.src;
+            document.getElementById('samplePreview').style.display = 'inline';
+            plotSpectrum(spectrum, img.width);
+          }
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    document.getElementById('blankUpload').addEventListener('change', e => handleImageUpload(e, true));
+    document.getElementById('sampleUpload').addEventListener('change', e => handleImageUpload(e, false));
+  </script>
+
+</body>
+</html> 
