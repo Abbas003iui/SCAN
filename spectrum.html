@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <title>UV‑Vis Absorbance Spectrum</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.4.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -12,10 +12,10 @@
       text-align: center;
       padding: 20px;
     }
-    #chartContainer {
+    #chartContainer, #calibrationContainer {
       width: 100%;
       max-width: 900px;
-      margin: auto;
+      margin: 30px auto;
       background: #fff;
       padding: 20px;
       border-radius: 12px;
@@ -39,10 +39,10 @@
 </head>
 <body>
   <h1>UV‑Vis Absorbance Spectrum</h1>
-  <p>Upload a <strong>blank/reference</strong> image and a <strong>sample</strong> image. A new absorbance plot is generated every time you change either file. Drag the black vertical line to align it with a peak.</p>
+  <p>Upload a <strong>blank/reference</strong> image and a <strong>sample</strong> image. A new absorbance plot is generated every time you change either file.</p>
 
-  <input type="file" accept="image/*" id="blankUpload" title="Upload blank/reference image" />
-  <input type="file" accept="image/*" id="sampleUpload" title="Upload sample image" />
+  <input type="file" accept="image/*" id="blankUpload" />
+  <input type="file" accept="image/*" id="sampleUpload" />
 
   <div class="preview-container">
     <img id="blankPreview" style="display:none;" />
@@ -50,7 +50,12 @@
   </div>
 
   <div id="chartContainer">
-    <canvas id="spectrumChart" width="800" height="400"></canvas>
+    <canvas id="spectrumChart"></canvas>
+  </div>
+
+  <h2>Calibration Graph</h2>
+  <div id="calibrationContainer">
+    <canvas id="calibrationChart"></canvas>
   </div>
 
 <script>
@@ -60,7 +65,7 @@ const END_WL = 750;
 let blankSpectrum = null;
 let sampleSpectrum = null;
 let chart = null;
-let draggableWavelength = 500; // Initial position of draggable line
+let calibrationChart = null;
 
 function extractSpectrum(img) {
   const canvas = document.createElement('canvas');
@@ -68,7 +73,6 @@ function extractSpectrum(img) {
   canvas.width = img.width;
   canvas.height = img.height;
   ctx.drawImage(img, 0, 0);
-
   const spectrum = [];
   for (let x = 0; x < img.width; x++) {
     let sum = 0;
@@ -161,27 +165,6 @@ function plotSpectrum(absorbance) {
         },
         legend: {
           display: false
-        },
-        annotation: {
-          annotations: {
-            draggableLine: {
-              type: 'line',
-              xMin: draggableWavelength,
-              xMax: draggableWavelength,
-              borderColor: 'black',
-              borderWidth: 2,
-              label: {
-                content: () => `λ = ${draggableWavelength} nm`,
-                enabled: true,
-                position: 'start'
-              },
-              draggable: true,
-              onDrag: (ctx) => {
-                draggableWavelength = Math.round(ctx.chart.scales.x.getValueForPixel(ctx.x));
-                ctx.annotation.update();
-              }
-            }
-          }
         }
       },
       scales: {
@@ -201,6 +184,68 @@ function plotSpectrum(absorbance) {
           },
           min: 0,
           max: 1
+        }
+      }
+    }
+  });
+
+  plotCalibrationChart(data);
+}
+
+function plotCalibrationChart(data) {
+  const ctx = document.getElementById('calibrationChart').getContext('2d');
+  if (calibrationChart) calibrationChart.destroy();
+
+  calibrationChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: 'Calibration Spectrum',
+        data: data,
+        borderColor: '#0077cc',
+        pointRadius: 0,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        annotation: {
+          annotations: {
+            line1: {
+              type: 'line',
+              xMin: 500,
+              xMax: 500,
+              borderColor: 'black',
+              borderWidth: 2,
+              draggable: true,
+              label: {
+                content: 'Adjust',
+                enabled: true,
+                position: 'start'
+              }
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          min: START_WL,
+          max: END_WL,
+          title: {
+            display: true,
+            text: 'Wavelength (nm)'
+          }
+        },
+        y: {
+          min: 0,
+          max: 1,
+          title: {
+            display: true,
+            text: 'Normalized Absorbance'
+          }
         }
       }
     },
