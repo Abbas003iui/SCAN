@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <title>UV‑Vis Absorbance Spectrum</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.1.0"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -11,10 +12,10 @@
       text-align: center;
       padding: 20px;
     }
-    #chartContainer {
+    #chartContainer, #uploadSpectrumContainer {
       width: 100%;
       max-width: 900px;
-      margin: auto;
+      margin: 40px auto;
       background: #fff;
       padding: 20px;
       border-radius: 12px;
@@ -52,13 +53,20 @@
     <canvas id="spectrumChart" width="800" height="400"></canvas>
   </div>
 
+  <h2>Upload Spectrum Image to Explore</h2>
+  <input type="file" accept="image/*" id="extraUpload" title="Upload separate spectrum image" />
+  <div id="uploadSpectrumContainer">
+    <canvas id="extraChart" width="800" height="400"></canvas>
+  </div>
+
 <script>
 const START_WL = 380;
 const END_WL = 750;
-
 let blankSpectrum = null;
 let sampleSpectrum = null;
 let chart = null;
+let extraChart = null;
+let lineAnnotation;
 
 function extractSpectrum(img) {
   const canvas = document.createElement('canvas');
@@ -117,9 +125,7 @@ function wavelengthToColor(wl) {
 
 function plotSpectrum(absorbance) {
   const n = absorbance.length;
-  const labels = absorbance.map((_, i) =>
-    Math.round(START_WL + i * (END_WL - START_WL) / (n - 1))
-  );
+  const labels = absorbance.map((_, i) => Math.round(START_WL + i * (END_WL - START_WL) / (n - 1)));
   const normA = normalize(absorbance);
   const peakIdx = normA.indexOf(Math.max(...normA));
   const peakWL = labels[peakIdx];
@@ -157,25 +163,84 @@ function plotSpectrum(absorbance) {
           display: true,
           text: `Peak A: ${peakVal} @ ${peakWL} nm`
         },
-        legend: {
-          display: false
-        }
+        legend: { display: false }
       },
       scales: {
         x: {
           type: 'linear',
-          title: {
-            display: true,
-            text: 'Wavelength (nm)'
-          },
+          title: { display: true, text: 'Wavelength (nm)' },
           min: START_WL,
           max: END_WL
         },
         y: {
-          title: {
-            display: true,
-            text: 'Normalized Absorbance'
-          },
+          title: { display: true, text: 'Normalized Absorbance' },
+          min: 0,
+          max: 1
+        }
+      }
+    }
+  });
+}
+
+function plotExtraImage(img) {
+  const spectrum = extractSpectrum(img);
+  const labels = spectrum.map((_, i) => Math.round(START_WL + i * (END_WL - START_WL) / (spectrum.length - 1)));
+  const data = normalize(spectrum).map((y, i) => ({ x: labels[i], y: y }));
+
+  const ctx = document.getElementById('extraChart').getContext('2d');
+  if (extraChart) extraChart.destroy();
+
+  lineAnnotation = {
+    type: 'line',
+    xMin: labels[0],
+    xMax: labels[0],
+    borderColor: 'black',
+    borderWidth: 2,
+    label: {
+      enabled: true,
+      content: `Wavelength: ${labels[0]} nm`,
+      position: 'start'
+    },
+    draggable: true,
+    onDrag: function (event) {
+      const wl = Math.round(event.x);
+      event.annotation.options.label.content = `Wavelength: ${wl} nm`;
+    }
+  };
+
+  extraChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: 'Uploaded Spectrum',
+        data: data,
+        parsing: false,
+        borderColor: '#333',
+        fill: false,
+        pointRadius: 0,
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        annotation: {
+          annotations: {
+            dragLine: lineAnnotation
+          }
+        },
+        legend: { display: false }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: { display: true, text: 'Wavelength (nm)' },
+          min: START_WL,
+          max: END_WL
+        },
+        y: {
+          title: { display: true, text: 'Normalized Intensity' },
           min: 0,
           max: 1
         }
@@ -217,8 +282,21 @@ function handleUpload(event, isBlank) {
   reader.readAsDataURL(file);
 }
 
+function handleExtraUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => plotExtraImage(img);
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 document.getElementById('blankUpload').addEventListener('change', e => handleUpload(e, true));
 document.getElementById('sampleUpload').addEventListener('change', e => handleUpload(e, false));
+document.getElementById('extraUpload').addEventListener('change', handleExtraUpload);
 </script>
 </body>
 </html>
