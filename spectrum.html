@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>UV-Vis Absorbance and Calibration Spectrum</title>
+  <title>UV‑Vis Absorbance Spectrum</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
@@ -35,229 +35,273 @@
       border: 1px solid #aaa;
       border-radius: 6px;
     }
+    #calibrationShift {
+      width: 80%;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
-  <h1>UV-Vis Absorbance Spectrum</h1>
-  <p>Upload a <strong>blank/reference</strong> image, a <strong>sample</strong> image, and optionally a <strong>calibration</strong> image.</p>
-  <input type="file" accept="image/*" id="blankUpload" />
-  <input type="file" accept="image/*" id="sampleUpload" />
-  <input type="file" accept="image/*" id="calibrationUpload" />
+  <h1>UV‑Vis Absorbance Spectrum</h1>
+  <p>Upload a <strong>blank/reference</strong> image and a <strong>sample</strong> image. A new absorbance plot is generated every time you change either file.</p>
+
+  <input type="file" accept="image/*" id="blankUpload" title="Upload blank/reference image" />
+  <input type="file" accept="image/*" id="sampleUpload" title="Upload sample image" />
+  <input type="file" accept="image/*" id="calibrationUpload" title="Upload calibration image" />
 
   <div class="preview-container">
     <img id="blankPreview" style="display:none;" />
     <img id="samplePreview" style="display:none;" />
-    <img id="calibrationPreview" style="display:none;" />
   </div>
 
   <div id="chartContainer">
-    <canvas id="spectrumChart"></canvas>
+    <canvas id="spectrumChart" width="800" height="400"></canvas>
   </div>
 
   <div id="calibrationChartContainer">
-    <canvas id="calibrationChart"></canvas>
+    <h2>Calibration Graph</h2>
+    <canvas id="calibrationChart" width="800" height="400"></canvas>
     <input type="range" id="calibrationShift" min="-100" max="100" value="0" />
   </div>
 
-  <script>
-    const START_WL = 380;
-    const END_WL = 750;
+<script>
+const START_WL = 380;
+const END_WL = 750;
 
-    let blankSpectrum = null;
-    let sampleSpectrum = null;
-    let calibrationSpectrum = null;
-    let spectrumChart = null;
-    let calibrationChart = null;
+let blankSpectrum = null;
+let sampleSpectrum = null;
+let calibrationSpectrum = null;
+let chart = null;
+let calibrationChart = null;
+let calibrationShift = 0;
 
-    function extractSpectrum(img) {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-      const spectrum = [];
-      for (let x = 0; x < img.width; x++) {
-        let sum = 0;
-        for (let y = 0; y < img.height; y++) {
-          const d = ctx.getImageData(x, y, 1, 1).data;
-          sum += (d[0] + d[1] + d[2]) / 3;
-        }
-        spectrum.push(sum / img.height);
-      }
-      return spectrum;
+function extractSpectrum(img) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = img.width;
+  canvas.height = img.height;
+  ctx.drawImage(img, 0, 0);
+
+  const spectrum = [];
+  for (let x = 0; x < img.width; x++) {
+    let sum = 0;
+    for (let y = 0; y < img.height; y++) {
+      const d = ctx.getImageData(x, y, 1, 1).data;
+      sum += (d[0] + d[1] + d[2]) / 3;
     }
+    spectrum.push(sum / img.height);
+  }
+  return spectrum;
+}
 
-    function resampleSpectrum(src, newLen) {
-      if (src.length === newLen) return src.slice();
-      const res = new Array(newLen);
-      const scale = (src.length - 1) / (newLen - 1);
-      for (let i = 0; i < newLen; i++) {
-        const x = i * scale;
-        const i0 = Math.floor(x);
-        const i1 = Math.min(i0 + 1, src.length - 1);
-        const t = x - i0;
-        res[i] = src[i0] * (1 - t) + src[i1] * t;
-      }
-      return res;
-    }
+function resampleSpectrum(src, newLen) {
+  if (src.length === newLen) return src.slice();
+  const res = new Array(newLen);
+  const scale = (src.length - 1) / (newLen - 1);
+  for (let i = 0; i < newLen; i++) {
+    const x = i * scale;
+    const i0 = Math.floor(x);
+    const i1 = Math.min(i0 + 1, src.length - 1);
+    const t = x - i0;
+    res[i] = src[i0] * (1 - t) + src[i1] * t;
+  }
+  return res;
+}
 
-    function calcAbsorbance(I0, I) {
-      return I.map((val, i) => {
-        const ref = I0[i] || 1e-6;
-        return Math.log10(ref / Math.max(val, 1e-6));
-      });
-    }
+function calcAbsorbance(I0, I) {
+  return I.map((val, i) => {
+    const ref = I0[i] || 1e-6;
+    return Math.log10(ref / Math.max(val, 1e-6));
+  });
+}
 
-    function normalize(arr) {
-      const max = Math.max(...arr);
-      return max ? arr.map(v => v / max) : arr;
-    }
+function normalize(arr) {
+  const max = Math.max(...arr);
+  return max ? arr.map(v => v / max) : arr;
+}
 
-    function wavelengthToColor(wl) {
-      if (wl < 440) return "#8B00FF";
-      if (wl < 490) return "#0000FF";
-      if (wl < 510) return "#00FFFF";
-      if (wl < 580) return "#00FF00";
-      if (wl < 600) return "#FFFF00";
-      if (wl < 645) return "#FF7F00";
-      return "#FF0000";
-    }
+function wavelengthToColor(wl) {
+  if (wl < 440) return "#8B00FF";
+  if (wl < 490) return "#0000FF";
+  if (wl < 510) return "#00FFFF";
+  if (wl < 580) return "#00FF00";
+  if (wl < 600) return "#FFFF00";
+  if (wl < 645) return "#FF7F00";
+  return "#FF0000";
+}
 
-    function plotSpectrum(absorbance) {
-      const n = absorbance.length;
-      const labels = absorbance.map((_, i) => Math.round(START_WL + i * (END_WL - START_WL) / (n - 1)));
-      const normA = normalize(absorbance);
-      const peakIdx = normA.indexOf(Math.max(...normA));
-      const peakWL = labels[peakIdx];
-      const peakVal = normA[peakIdx].toFixed(2);
-      const data = labels.map((wl, i) => ({ x: wl, y: normA[i] }));
+function createGradient(ctx, n) {
+  const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
+  for (let t = 0; t <= 1; t += 0.05) {
+    const wl = START_WL + t * (END_WL - START_WL);
+    gradient.addColorStop(t, wavelengthToColor(wl));
+  }
+  return gradient;
+}
 
-      const ctx = document.getElementById('spectrumChart').getContext('2d');
-      if (spectrumChart) spectrumChart.destroy();
+function plotSpectrum(absorbance) {
+  const n = absorbance.length;
+  const labels = absorbance.map((_, i) => Math.round(START_WL + i * (END_WL - START_WL) / (n - 1)));
+  const normA = normalize(absorbance);
+  const peakIdx = normA.indexOf(Math.max(...normA));
+  const peakWL = labels[peakIdx];
+  const peakVal = normA[peakIdx].toFixed(2);
+  const data = labels.map((wl, i) => ({ x: wl, y: normA[i] }));
 
-      const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
-      for (let t = 0; t <= 1; t += 0.05) {
-        const wl = START_WL + t * (END_WL - START_WL);
-        gradient.addColorStop(t, wavelengthToColor(wl));
-      }
+  const ctx = document.getElementById('spectrumChart').getContext('2d');
+  if (chart) chart.destroy();
+  const gradient = createGradient(ctx, n);
 
-      spectrumChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          datasets: [{
-            label: 'Absorbance',
-            data: data,
-            parsing: false,
-            borderColor: '#000',
-            backgroundColor: gradient,
-            fill: 'origin',
-            pointRadius: 0,
-            tension: 0.3
-          }]
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: 'Absorbance',
+        data: data,
+        parsing: false,
+        borderColor: '#000',
+        backgroundColor: gradient,
+        fill: 'origin',
+        pointRadius: 0,
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        title: {
+          display: true,
+          text: `Peak A: ${peakVal} @ ${peakWL} nm`
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            title: {
-              display: true,
-              text: `Peak A: ${peakVal} @ ${peakWL} nm`
-            },
-            legend: { display: false }
-          },
-          scales: {
-            x: { type: 'linear', min: START_WL, max: END_WL, title: { display: true, text: 'Wavelength (nm)' } },
-            y: { min: 0, max: 1, title: { display: true, text: 'Normalized Absorbance' } }
-          }
+        legend: {
+          display: false
         }
-      });
-    }
-
-    function plotCalibration(spectrum, shift = 0) {
-      const len = spectrum.length;
-      const labels = spectrum.map((_, i) => Math.round(START_WL + ((i + shift) * (END_WL - START_WL) / (len - 1))));
-      const norm = normalize(spectrum);
-      const data = labels.map((wl, i) => ({ x: wl, y: norm[i] }));
-
-      const ctx = document.getElementById('calibrationChart').getContext('2d');
-      if (calibrationChart) calibrationChart.destroy();
-
-      calibrationChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          datasets: [{
-            label: 'Calibration Spectrum',
-            data: data,
-            parsing: false,
-            borderColor: '#333',
-            backgroundColor: '#ccc',
-            fill: false,
-            pointRadius: 0,
-            tension: 0.3
-          }]
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          title: {
+            display: true,
+            text: 'Wavelength (nm)'
+          },
+          min: START_WL,
+          max: END_WL
         },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            title: { display: true, text: 'Calibration Spectrum (Shift to Align)' }
+        y: {
+          title: {
+            display: true,
+            text: 'Normalized Absorbance'
           },
-          scales: {
-            x: { type: 'linear', min: START_WL, max: END_WL, title: { display: true, text: 'Wavelength (nm)' } },
-            y: { min: 0, max: 1, title: { display: true, text: 'Normalized Intensity' } }
-          }
+          min: 0,
+          max: 1
         }
-      });
-    }
-
-    function regeneratePlot() {
-      if (!blankSpectrum || !sampleSpectrum) return;
-      const len = Math.min(blankSpectrum.length, sampleSpectrum.length);
-      const I0 = resampleSpectrum(blankSpectrum, len);
-      const I = resampleSpectrum(sampleSpectrum, len);
-      const A = calcAbsorbance(I0, I);
-      plotSpectrum(A);
-    }
-
-    document.getElementById('blankUpload').addEventListener('change', e => handleUpload(e, 'blank'));
-    document.getElementById('sampleUpload').addEventListener('change', e => handleUpload(e, 'sample'));
-    document.getElementById('calibrationUpload').addEventListener('change', e => handleUpload(e, 'calibration'));
-    document.getElementById('calibrationShift').addEventListener('input', e => {
-      if (calibrationSpectrum) {
-        const shift = parseInt(e.target.value);
-        plotCalibration(calibrationSpectrum, shift);
       }
-    });
-
-    function handleUpload(event, type) {
-      const file = event.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = e => {
-        const img = new Image();
-        img.onload = () => {
-          const spectrum = extractSpectrum(img);
-          if (type === 'blank') {
-            blankSpectrum = spectrum;
-            document.getElementById('blankPreview').src = img.src;
-            document.getElementById('blankPreview').style.display = 'inline';
-          } else if (type === 'sample') {
-            sampleSpectrum = spectrum;
-            document.getElementById('samplePreview').src = img.src;
-            document.getElementById('samplePreview').style.display = 'inline';
-          } else if (type === 'calibration') {
-            calibrationSpectrum = spectrum;
-            document.getElementById('calibrationPreview').src = img.src;
-            document.getElementById('calibrationPreview').style.display = 'inline';
-            plotCalibration(spectrum);
-          }
-          regeneratePlot();
-        };
-        img.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
     }
-  </script>
+  });
+}
+
+function plotCalibrationGraph() {
+  if (!calibrationSpectrum) return;
+  const len = calibrationSpectrum.length;
+  const shiftPx = parseInt(calibrationShift);
+  const shifted = resampleSpectrum(calibrationSpectrum, len);
+  const shiftedData = normalize(shifted);
+
+  const shiftedLabels = shifted.map((_, i) => START_WL + ((i + shiftPx + len) % len) * (END_WL - START_WL) / len);
+  const data = shiftedLabels.map((wl, i) => ({ x: wl, y: shiftedData[i] }));
+
+  const ctx = document.getElementById('calibrationChart').getContext('2d');
+  if (calibrationChart) calibrationChart.destroy();
+  const gradient = createGradient(ctx, len);
+
+  calibrationChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [{
+        label: 'Calibration',
+        data: data,
+        parsing: false,
+        borderColor: '#000',
+        backgroundColor: gradient,
+        fill: 'origin',
+        pointRadius: 0,
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          type: 'linear',
+          title: {
+            display: true,
+            text: 'Wavelength (nm)'
+          },
+          min: START_WL,
+          max: END_WL
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'Normalized Intensity'
+          },
+          min: 0,
+          max: 1
+        }
+      },
+      plugins: {
+        legend: { display: false },
+        title: { display: true, text: 'Calibration Spectrum' }
+      }
+    }
+  });
+}
+
+function regeneratePlot() {
+  if (!blankSpectrum || !sampleSpectrum) return;
+  const len = Math.min(blankSpectrum.length, sampleSpectrum.length);
+  const I0 = resampleSpectrum(blankSpectrum, len);
+  const I = resampleSpectrum(sampleSpectrum, len);
+  const A = calcAbsorbance(I0, I);
+  plotSpectrum(A);
+}
+
+function handleUpload(event, type) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const spectrum = extractSpectrum(img);
+      if (type === 'blank') {
+        blankSpectrum = spectrum;
+        document.getElementById('blankPreview').src = img.src;
+        document.getElementById('blankPreview').style.display = 'inline';
+      } else if (type === 'sample') {
+        sampleSpectrum = spectrum;
+        document.getElementById('samplePreview').src = img.src;
+        document.getElementById('samplePreview').style.display = 'inline';
+      } else if (type === 'calibration') {
+        calibrationSpectrum = spectrum;
+        plotCalibrationGraph();
+      }
+      regeneratePlot();
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+document.getElementById('blankUpload').addEventListener('change', e => handleUpload(e, 'blank'));
+document.getElementById('sampleUpload').addEventListener('change', e => handleUpload(e, 'sample'));
+document.getElementById('calibrationUpload').addEventListener('change', e => handleUpload(e, 'calibration'));
+document.getElementById('calibrationShift').addEventListener('input', e => {
+  calibrationShift = e.target.value;
+  plotCalibrationGraph();
+});
+</script>
 </body>
 </html>
