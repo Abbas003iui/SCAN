@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <title>UV‑Vis Absorbance Spectrum</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.4.0"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -34,23 +35,11 @@
       border: 1px solid #aaa;
       border-radius: 6px;
     }
-    #spectrumCanvas {
-      max-width: 900px;
-      width: 100%;
-      height: auto;
-      border: 1px solid #ccc;
-      margin-top: 20px;
-      cursor: crosshair;
-    }
-    #wavelengthDisplay {
-      margin-top: 10px;
-      font-weight: bold;
-    }
   </style>
 </head>
 <body>
   <h1>UV‑Vis Absorbance Spectrum</h1>
-  <p>Upload a <strong>blank/reference</strong> image and a <strong>sample</strong> image. A new absorbance plot is generated every time you change either file.</p>
+  <p>Upload a <strong>blank/reference</strong> image and a <strong>sample</strong> image. A new absorbance plot is generated every time you change either file. Drag the black vertical line to align it with a peak.</p>
 
   <input type="file" accept="image/*" id="blankUpload" title="Upload blank/reference image" />
   <input type="file" accept="image/*" id="sampleUpload" title="Upload sample image" />
@@ -64,12 +53,6 @@
     <canvas id="spectrumChart" width="800" height="400"></canvas>
   </div>
 
-  <h2>Manual Spectrum Inspection</h2>
-  <p>Upload an image of a spectrum (e.g. from Theremino), then drag the line to read peak wavelength:</p>
-  <input type="file" accept="image/*" id="spectrumImageUpload" />
-  <canvas id="spectrumCanvas"></canvas>
-  <div id="wavelengthDisplay">Wavelength: – nm</div>
-
 <script>
 const START_WL = 380;
 const END_WL = 750;
@@ -77,6 +60,7 @@ const END_WL = 750;
 let blankSpectrum = null;
 let sampleSpectrum = null;
 let chart = null;
+let draggableWavelength = 500; // Initial position of draggable line
 
 function extractSpectrum(img) {
   const canvas = document.createElement('canvas');
@@ -177,6 +161,27 @@ function plotSpectrum(absorbance) {
         },
         legend: {
           display: false
+        },
+        annotation: {
+          annotations: {
+            draggableLine: {
+              type: 'line',
+              xMin: draggableWavelength,
+              xMax: draggableWavelength,
+              borderColor: 'black',
+              borderWidth: 2,
+              label: {
+                content: () => `λ = ${draggableWavelength} nm`,
+                enabled: true,
+                position: 'start'
+              },
+              draggable: true,
+              onDrag: (ctx) => {
+                draggableWavelength = Math.round(ctx.chart.scales.x.getValueForPixel(ctx.x));
+                ctx.annotation.update();
+              }
+            }
+          }
         }
       },
       scales: {
@@ -198,7 +203,8 @@ function plotSpectrum(absorbance) {
           max: 1
         }
       }
-    }
+    },
+    plugins: [Chart.registry.getPlugin('annotation')]
   });
 }
 
@@ -237,64 +243,6 @@ function handleUpload(event, isBlank) {
 
 document.getElementById('blankUpload').addEventListener('change', e => handleUpload(e, true));
 document.getElementById('sampleUpload').addEventListener('change', e => handleUpload(e, false));
-
-// Manual spectrum analysis (Theremino style)
-const spectrumCanvas = document.getElementById('spectrumCanvas');
-const spectrumCtx = spectrumCanvas.getContext('2d');
-const wavelengthDisplay = document.getElementById('wavelengthDisplay');
-let spectrumImg = new Image();
-let isDragging = false;
-let dragX = 0;
-
-function drawSpectrumCanvas() {
-  spectrumCtx.clearRect(0, 0, spectrumCanvas.width, spectrumCanvas.height);
-  spectrumCtx.drawImage(spectrumImg, 0, 0, spectrumCanvas.width, spectrumCanvas.height);
-  spectrumCtx.beginPath();
-  spectrumCtx.moveTo(dragX, 0);
-  spectrumCtx.lineTo(dragX, spectrumCanvas.height);
-  spectrumCtx.strokeStyle = 'black';
-  spectrumCtx.lineWidth = 2;
-  spectrumCtx.stroke();
-
-  const wl = Math.round(START_WL + (dragX / spectrumCanvas.width) * (END_WL - START_WL));
-  wavelengthDisplay.textContent = `Wavelength: ${wl} nm`;
-}
-
-document.getElementById('spectrumImageUpload').addEventListener('change', function(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    spectrumImg.onload = function() {
-      spectrumCanvas.width = spectrumImg.width;
-      spectrumCanvas.height = spectrumImg.height;
-      dragX = spectrumCanvas.width / 2;
-      drawSpectrumCanvas();
-    };
-    spectrumImg.src = e.target.result;
-  };
-  reader.readAsDataURL(file);
-});
-
-spectrumCanvas.addEventListener('mousedown', function(e) {
-  const rect = spectrumCanvas.getBoundingClientRect();
-  const x = e.clientX - rect.left;
-  if (Math.abs(x - dragX) < 10) {
-    isDragging = true;
-  }
-});
-
-window.addEventListener('mousemove', function(e) {
-  if (!isDragging) return;
-  const rect = spectrumCanvas.getBoundingClientRect();
-  dragX = e.clientX - rect.left;
-  dragX = Math.max(0, Math.min(dragX, spectrumCanvas.width));
-  drawSpectrumCanvas();
-});
-
-window.addEventListener('mouseup', function() {
-  isDragging = false;
-});
 </script>
 </body>
 </html>
