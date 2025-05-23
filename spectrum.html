@@ -2,9 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>UV‑Vis Absorbance Spectrum</title>
+  <title>UV-Vis Absorbance Spectrum Analyzer</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.1.0"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -35,11 +34,22 @@
       border: 1px solid #aaa;
       border-radius: 6px;
     }
+    #instructions {
+      background: #fff3cd;
+      padding: 10px;
+      border: 1px solid #ffeeba;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
   </style>
 </head>
 <body>
-  <h1>UV‑Vis Absorbance Spectrum</h1>
-  <p id="instructions">Step 1: Upload a <strong>blank/reference</strong> image.</p>
+  <h1>UV‑Vis Absorbance Spectrum Analyzer</h1>
+  <div id="instructions">
+    <p><strong>Step 1:</strong> Upload a <strong>blank/reference</strong> image.</p>
+    <p><strong>Step 2:</strong> Click on the graph to calibrate by aligning a known peak to its wavelength.</p>
+    <p><strong>Step 3:</strong> Upload the <strong>sample</strong> image to generate the absorbance spectrum.</p>
+  </div>
 
   <input type="file" accept="image/*" id="blankUpload" title="Upload blank/reference image" />
   <input type="file" accept="image/*" id="sampleUpload" title="Upload sample image" disabled />
@@ -50,17 +60,16 @@
   </div>
 
   <div id="chartContainer">
-    <canvas id="spectrumChart" width="800" height="400"></canvas>
+    <canvas id="spectrumChart"></canvas>
   </div>
 
 <script>
 const START_WL = 380;
 const END_WL = 750;
-let wavelengthShift = 0;
-let calibrated = false;
 
 let blankSpectrum = null;
 let sampleSpectrum = null;
+let calibrationOffset = 0;
 let chart = null;
 
 function extractSpectrum(img) {
@@ -118,64 +127,15 @@ function wavelengthToColor(wl) {
   return "#FF0000";
 }
 
-function plotBlank(spectrum) {
-  const n = spectrum.length;
-  const labels = spectrum.map((_, i) => START_WL + wavelengthShift + i * (END_WL - START_WL) / (n - 1));
-  const norm = normalize(spectrum);
-  const data = labels.map((wl, i) => ({ x: wl, y: norm[i] }));
-
-  const ctx = document.getElementById('spectrumChart').getContext('2d');
-  if (chart) chart.destroy();
-
-  const gradient = ctx.createLinearGradient(0, 0, ctx.canvas.width, 0);
-  for (let t = 0; t <= 1; t += 0.05) {
-    const wl = START_WL + t * (END_WL - START_WL);
-    gradient.addColorStop(t, wavelengthToColor(wl));
-  }
-
-  chart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      datasets: [{
-        label: 'Blank (Calibrated)',
-        data: data,
-        parsing: false,
-        borderColor: '#000',
-        backgroundColor: gradient,
-        fill: 'origin',
-        pointRadius: 0,
-        tension: 0.3
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        title: { display: true, text: `Blank Spectrum (shift: ${wavelengthShift.toFixed(1)} nm)` }
-      },
-      scales: {
-        x: { title: { display: true, text: 'Wavelength (nm)' }, min: START_WL, max: END_WL },
-        y: { title: { display: true, text: 'Normalized Intensity' }, min: 0, max: 1 }
-      },
-      onClick: (e, elements) => {
-        if (!blankSpectrum) return;
-        const x = chart.scales.x.getValueForPixel(e.x);
-        const midIndex = Math.floor(blankSpectrum.length / 2);
-        const expectedX = START_WL + midIndex * (END_WL - START_WL) / (blankSpectrum.length - 1);
-        wavelengthShift = x - expectedX;
-        calibrated = true;
-        document.getElementById('instructions').innerText = "Step 3: Upload the sample image to compare absorbance.";
-        document.getElementById('sampleUpload').disabled = false;
-        plotBlank(blankSpectrum);
-      }
-    }
-  });
+function updateInstructions(message) {
+  document.getElementById('instructions').innerHTML = `<p>${message}</p>`;
 }
 
-function plotAbsorbance(absorbance) {
+function plotSpectrum(absorbance) {
   const n = absorbance.length;
-  const labels = absorbance.map((_, i) => START_WL + wavelengthShift + i * (END_WL - START_WL) / (n - 1));
+  const labels = absorbance.map((_, i) =>
+    Math.round(START_WL + calibrationOffset + i * (END_WL - START_WL) / (n - 1))
+  );
   const normA = normalize(absorbance);
   const data = labels.map((wl, i) => ({ x: wl, y: normA[i] }));
 
@@ -207,14 +167,36 @@ function plotAbsorbance(absorbance) {
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        title: { display: true, text: 'Absorbance Spectrum' }
+        title: { display: true, text: 'Click on graph to calibrate wavelength' }
       },
       scales: {
-        x: { title: { display: true, text: 'Wavelength (nm)' }, min: START_WL, max: END_WL },
-        y: { title: { display: true, text: 'Normalized Absorbance' }, min: 0, max: 1 }
+        x: { type: 'linear', title: { display: true, text: 'Wavelength (nm)' }, min: 380, max: 750 },
+        y: { min: 0, max: 1, title: { display: true, text: 'Normalized Absorbance' } }
+      },
+      onClick: (e) => {
+        const chartArea = chart.chartArea;
+        const x = e.x - chart.canvas.getBoundingClientRect().left;
+        const pct = (x - chartArea.left) / (chartArea.right - chartArea.left);
+        const clickedWavelength = START_WL + pct * (END_WL - START_WL);
+        const knownPeak = prompt("Enter known wavelength (nm) at clicked point:");
+        if (knownPeak) {
+          calibrationOffset = parseFloat(knownPeak) - clickedWavelength;
+          updateInstructions("Calibration complete. Now upload sample image.");
+          document.getElementById('sampleUpload').disabled = false;
+          regeneratePlot();
+        }
       }
     }
   });
+}
+
+function regeneratePlot() {
+  if (!blankSpectrum || !sampleSpectrum) return;
+  const len = Math.min(blankSpectrum.length, sampleSpectrum.length);
+  const I0 = resampleSpectrum(blankSpectrum, len);
+  const I = resampleSpectrum(sampleSpectrum, len);
+  const A = calcAbsorbance(I0, I);
+  plotSpectrum(A);
 }
 
 function handleUpload(event, isBlank) {
@@ -229,17 +211,13 @@ function handleUpload(event, isBlank) {
         blankSpectrum = spectrum;
         document.getElementById('blankPreview').src = img.src;
         document.getElementById('blankPreview').style.display = 'inline';
-        document.getElementById('instructions').innerText = "Step 2: Click on the graph to calibrate wavelength alignment.";
-        plotBlank(blankSpectrum);
+        updateInstructions("Click on graph to calibrate wavelength using a known peak.");
+        plotSpectrum(normalize(blankSpectrum));
       } else {
         sampleSpectrum = spectrum;
-        const len = Math.min(blankSpectrum.length, sampleSpectrum.length);
-        const I0 = resampleSpectrum(blankSpectrum, len);
-        const I = resampleSpectrum(sampleSpectrum, len);
-        const A = calcAbsorbance(I0, I);
         document.getElementById('samplePreview').src = img.src;
         document.getElementById('samplePreview').style.display = 'inline';
-        plotAbsorbance(A);
+        regeneratePlot();
       }
     };
     img.src = e.target.result;
